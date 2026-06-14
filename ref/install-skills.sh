@@ -247,7 +247,7 @@ echo "  ld-config resolved at $LD_CONFIG" >&2
 #    per-skill SKILL.md § Scheduling values.
 #
 # job-name|schedule|prompt
-CRON_JOBS='ld-morning-updates|5 7 * * *|Run the ld-morning-updates affirmation producer now: compose the morning affirmation and post it to the kiosk as card 2, type affirmation.
+CRON_JOBS='ld-morning-updates|0 7 * * *|Run the ld-morning-updates affirmation producer now: compose the morning affirmation and post it to the kiosk as card 2, type affirmation.
 ld-morning-triage|5 7 * * *|Run the ld-morning-triage producer now: surface the one most-important unaddressed inbound across Gmail and Slack from the last 36h and post it to the kiosk as card 1, type alert.
 ld-weather|0 6 * * *|Run the ld-weather producer now: fetch the forecast and post the self-contained weather HTML tile to the kiosk as card 3, type weather.
 ld-sports|0 6 * * *|Run the ld-sports producer now: fetch results and post the self-contained sports HTML tile to the kiosk as card 5, type sports.
