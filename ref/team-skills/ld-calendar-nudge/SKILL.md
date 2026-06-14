@@ -319,9 +319,10 @@ Then:
 
 ## Scheduling
 
-Registered by the agent-seed installer as a half-hourly Hermes cron job:
-
-    hermes cron create '20,50 * * * *' --prompt "Run the ld-calendar-nudge producer now: if a meeting with other attendees starts within the lookahead window, post a kiosk reminder and message the owner over Plow Chat."
+The schedule (half-hourly, `20,50 * * * *` in the container timezone) + prompt
+are registered by the agent-seed installer's `CRON_JOBS` table
+(`ref/install-skills.sh`), the single source for every producer's schedule; this
+skill never self-registers.
 
 Each run fetches the calendar, applies the Filter / Dedupe / Compose rules
 above, and posts to the kiosk + Plow Chat only when ≥1 event qualifies

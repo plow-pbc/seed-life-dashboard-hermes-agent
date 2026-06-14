@@ -157,6 +157,7 @@ just return the digest in the reply.
 
 ## Scheduling
 
-    hermes cron create '0 17 * * 0' --prompt "Run the ld-weekly-digest producer now: compose the week-ahead digest and post it to the kiosk as card 4, type digest."
-
-(The installer creates the job; this skill never self-registers.)
+The schedule (Sundays 17:00 in `family.timezone` — `0 17 * * 0` in the
+container timezone) + prompt are registered by the agent-seed installer's
+`CRON_JOBS` table (`ref/install-skills.sh`), the single source for every
+producer's schedule; this skill never self-registers.

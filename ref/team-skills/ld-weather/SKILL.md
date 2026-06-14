@@ -65,4 +65,7 @@ To move the kiosk, change `lat` / `lon` / `location`.
 
 ## Scheduling
 
-    hermes cron create '0 6 * * *' --prompt "Run the ld-weather producer now: fetch the forecast and post the self-contained weather HTML tile to the kiosk as card 3, type weather."
+The schedule (06:00 in `family.timezone` — `0 6 * * *` in the container
+timezone) + prompt are registered by the agent-seed installer's `CRON_JOBS`
+table (`ref/install-skills.sh`), the single source for every producer's
+schedule; this skill never self-registers.

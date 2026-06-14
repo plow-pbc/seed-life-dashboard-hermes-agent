@@ -152,11 +152,8 @@ After posting, emit a one-line summary of what was posted.
 
 ## Scheduling
 
-Registered by the agent-seed installer as a Hermes cron job:
-
-    hermes cron create '0 7 * * *' --prompt "Run the ld-morning-updates affirmation producer now: compose the morning affirmation and post it to the kiosk as card 2, type affirmation."
-
-(07:00 in family.timezone — five minutes before ld-morning-triage (07:05) so
-the two morning ticks stay visually distinct in `hermes cron list`. The
-installer creates the job; this skill never
-self-registers.)
+The schedule (07:00 in `family.timezone` — `0 7 * * *` in the container
+timezone, five minutes before ld-morning-triage at 07:05 so the two morning
+ticks stay visually distinct in `hermes cron list`) + prompt are registered by
+the agent-seed installer's `CRON_JOBS` table (`ref/install-skills.sh`), the
+single source for every producer's schedule; this skill never self-registers.

@@ -167,9 +167,7 @@ rather than a missed session.
 
 ## Scheduling
 
-Registered by the agent-seed installer as a Hermes cron job:
-
-    hermes cron create '5 7 * * *' --prompt "Run the ld-morning-triage producer now: surface the one most-important unaddressed inbound across Gmail and Slack from the last 36h and post it to the kiosk as card 1, type alert."
-
-(07:05 in family.timezone. The installer creates the job; this skill never
-self-registers.)
+The schedule (07:05 in `family.timezone` — `5 7 * * *` in the container
+timezone) + prompt are registered by the agent-seed installer's `CRON_JOBS`
+table (`ref/install-skills.sh`), the single source for every producer's
+schedule; this skill never self-registers.
