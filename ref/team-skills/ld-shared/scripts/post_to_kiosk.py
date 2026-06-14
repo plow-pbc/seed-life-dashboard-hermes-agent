@@ -16,11 +16,10 @@ and `ld-calendar-nudge` is a hybrid — its scheduled `run.js` posts directly
 while it still ships `post_nudge.py` for its manual reminder path (which
 uses this helper).
 
-Read from fixed paths the caller cannot redirect — not from argv, not from
-the environment:
+Read from fixed sources the caller cannot redirect — not from argv:
   - message text:  caller-set MESSAGE_FILE (per-bundle, e.g. /tmp/ld-<x>-text)
-  - endpoint URL:  /config/secrets/dashboard-endpoint-url
-  - bearer token:  /config/secrets/dashboard-token
+  - endpoint URL:  DASHBOARD_ENDPOINT_URL env var (from data/.env)
+  - bearer token:  DASHBOARD_TOKEN env var (from data/.env)
 
 The test suite imports this module directly and rebinds these constants — a
 seam reachable only by an importer, not by the CLI.
@@ -61,9 +60,12 @@ BODY_TYPE: str | None = None
 # string to override it.
 TITLE: str | None = None
 
-# Shared across all ld- bundles.
-ENDPOINT_FILE = "/config/secrets/dashboard-endpoint-url"
-TOKEN_FILE = "/config/secrets/dashboard-token"
+# Shared across all ld- bundles. On Hermes the kiosk endpoint + bearer arrive
+# as container env vars (from data/.env), not as /config/secrets/* files —
+# Hermes has no per-agent secrets mount; the connectors skill reads its bearer
+# from env the same way.
+ENDPOINT_ENV = "DASHBOARD_ENDPOINT_URL"
+TOKEN_ENV = "DASHBOARD_TOKEN"
 # The Pi backend rides the household LAN/tailnet, not the public internet —
 # http:// is an accepted trade-off for that trust zone.
 REQUIRED_URL_PREFIXES = ("http://", "https://")
@@ -82,6 +84,19 @@ def read_required(path, label):
         sys.exit(f"error: {label} not readable: {path} ({exc.strerror})")
     if not value:
         sys.exit(f"error: {label} is empty: {path}")
+    return value
+
+
+def read_required_env(name, label):
+    """Read a required non-empty env var or exit non-zero with a clear label.
+
+    Mirrors read_required's fail-loud contract for the values that arrive via
+    the Hermes container environment (DASHBOARD_ENDPOINT_URL / DASHBOARD_TOKEN)
+    rather than from a file.
+    """
+    value = os.environ.get(name, "").strip()
+    if not value:
+        sys.exit(f"error: {label} env var is empty or unset: {name}")
     return value
 
 
@@ -118,10 +133,10 @@ def main():
     args = parser.parse_args()
 
     text = read_required(MESSAGE_FILE, f"{BODY_TYPE} text file")
-    url = read_required(ENDPOINT_FILE, "endpoint file")
+    url = read_required_env(ENDPOINT_ENV, "endpoint URL")
     if not any(url.startswith(p) for p in REQUIRED_URL_PREFIXES):
         sys.exit(f"error: endpoint URL must start with http:// or https://, got: {url}")
-    token = read_required(TOKEN_FILE, "token file")
+    token = read_required_env(TOKEN_ENV, "token")
 
     body = {"card": CARD, "type": BODY_TYPE, "text": text}
     if TITLE is not None:

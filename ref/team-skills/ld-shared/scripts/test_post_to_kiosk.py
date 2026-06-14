@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Tests for post_to_kiosk.py — the shared POST helper used by all ld- bundles.
 
-post_to_kiosk.py reads three fixed-path inputs: message text, endpoint URL,
-and bearer token. The text
+post_to_kiosk.py reads three inputs: message text from a fixed file, and the
+endpoint URL + bearer token from the container environment
+(DASHBOARD_ENDPOINT_URL / DASHBOARD_TOKEN, landed in data/.env). The text
 path (MESSAGE_FILE) and the body shape (CARD + BODY_TYPE) are set by each
 bundle's thin wrapper before calling main(). These tests import the module and
-rebind those module-level constants to scratch files — a seam reachable
-only by an importer, never by the CLI a scheduled agent invokes.
+rebind MESSAGE_FILE / CARD / BODY_TYPE — a seam reachable only by an importer,
+never by the CLI a scheduled agent invokes — and set the two env vars.
 
 Bundle wrappers are also verified end-to-end: each wrapper sets its own
 MESSAGE_FILE + CARD + BODY_TYPE and then dispatches to this module, so the
@@ -15,6 +16,7 @@ wrappers' rebinds must reach `main()` correctly.
 import contextlib
 import io
 import json
+import os
 import sys
 import tempfile
 import threading
@@ -65,22 +67,23 @@ def write_fixtures(
     card: str = "1",
     body_type: str = "alert",
 ):
-    """Write the three fixed-path inputs to tmp and rebind module constants.
+    """Write the message-text handoff file, set the endpoint+token env vars,
+    and rebind the wrapper-owned module constants.
 
-    Returns (msg_file, endpoint_file, token_file).
+    Endpoint URL + bearer token now arrive via the container environment
+    (DASHBOARD_ENDPOINT_URL / DASHBOARD_TOKEN), not from files — so this
+    helper sets them in os.environ rather than writing scratch files.
+
+    Returns the msg_file Path (the only file input that remains).
     """
     msg_file = tmp / "message-text"
-    endpoint_file = tmp / "endpoint-url"
-    token_file = tmp / "dashboard-token"
     msg_file.write_text(text)
-    endpoint_file.write_text(endpoint)
-    token_file.write_text(TOKEN)
     post_to_kiosk.MESSAGE_FILE = str(msg_file)
     post_to_kiosk.CARD = card
     post_to_kiosk.BODY_TYPE = body_type
-    post_to_kiosk.ENDPOINT_FILE = str(endpoint_file)
-    post_to_kiosk.TOKEN_FILE = str(token_file)
-    return msg_file, endpoint_file, token_file
+    os.environ[post_to_kiosk.ENDPOINT_ENV] = endpoint
+    os.environ[post_to_kiosk.TOKEN_ENV] = TOKEN
+    return msg_file
 
 
 class _CapturingHandler(BaseHTTPRequestHandler):
@@ -121,7 +124,7 @@ def test_live_post_hits_endpoint_with_correct_payload():
     server, base = _start_capturing_server()
     try:
         with tempfile.TemporaryDirectory() as d:
-            msg_file, _, _ = write_fixtures(
+            msg_file = write_fixtures(
                 Path(d),
                 text="follow up with Stephanie",
                 endpoint=f"{base}/api/message",
@@ -212,7 +215,7 @@ def test_non_200_exits_non_zero_and_keeps_handoff_file():
     base = f"http://127.0.0.1:{server.server_address[1]}"
     try:
         with tempfile.TemporaryDirectory() as d:
-            msg_file, _, _ = write_fixtures(Path(d), endpoint=f"{base}/api/message")
+            msg_file = write_fixtures(Path(d), endpoint=f"{base}/api/message")
             # http:// is accepted — Pi backend on household LAN/tailnet.
             code, _ = run()
             file_exists_after_run = msg_file.exists()
@@ -224,23 +227,24 @@ def test_non_200_exits_non_zero_and_keeps_handoff_file():
 
 
 def test_missing_or_empty_inputs_fail_fast():
-    """Each of the three fixed-path inputs fails loudly when missing or
-    empty — the helper has no defaults and no fallbacks. Verifies
-    read_required's fail-fast contract: cron operator sees a clear
-    "<label> not readable" or "<label> is empty" message and a non-zero
-    exit, not a half-attempted POST or a misleading "success" log line.
+    """Each of the three inputs fails loudly when missing or empty — the helper
+    has no defaults and no fallbacks. The message text is a fixed file
+    (read_required); the endpoint URL + bearer token are env vars
+    (read_required_env). A cron operator sees a clear "<label> not readable" /
+    "is empty" / "env var is empty or unset" message and a non-zero exit, not a
+    half-attempted POST or a misleading "success" log line.
     """
     for label, mutate in (
         ("message text file not readable", lambda p: p["msg"].unlink()),
-        ("endpoint file not readable", lambda p: p["endpoint"].unlink()),
-        ("token file not readable", lambda p: p["token"].unlink()),
+        ("endpoint env var unset", lambda p: os.environ.pop(post_to_kiosk.ENDPOINT_ENV, None)),
+        ("token env var unset", lambda p: os.environ.pop(post_to_kiosk.TOKEN_ENV, None)),
         ("message text file is empty", lambda p: p["msg"].write_text("")),
-        ("endpoint file is empty", lambda p: p["endpoint"].write_text("")),
-        ("token file is empty", lambda p: p["token"].write_text("")),
+        ("endpoint env var is empty", lambda p: os.environ.__setitem__(post_to_kiosk.ENDPOINT_ENV, "")),
+        ("token env var is empty", lambda p: os.environ.__setitem__(post_to_kiosk.TOKEN_ENV, "")),
     ):
         with tempfile.TemporaryDirectory() as d:
-            msg, ep, tok = write_fixtures(Path(d))
-            mutate({"msg": msg, "endpoint": ep, "token": tok})
+            msg = write_fixtures(Path(d))
+            mutate({"msg": msg})
             code, _ = run("--dry-run")
         check(f"--dry-run exits non-zero when {label}", code != 0)
 
@@ -294,7 +298,7 @@ def test_redirect_not_followed():
     base = f"http://127.0.0.1:{server.server_address[1]}"
     try:
         with tempfile.TemporaryDirectory() as d:
-            msg_file, _, _ = write_fixtures(Path(d), endpoint=f"{base}/api/message")
+            msg_file = write_fixtures(Path(d), endpoint=f"{base}/api/message")
             # http:// is accepted — Pi backend on household LAN/tailnet.
             code, _ = run()
             handoff_kept = msg_file.exists()
