@@ -76,6 +76,14 @@ case "$ENDPOINT_URL" in
   http://*|https://*) ;;
   *) echo "DASHBOARD_ENDPOINT_URL is not http(s)://" >&2; exit 1 ;;
 esac
+# Reject embedded userinfo (scheme://user:pass@host/...) — credentials in the
+# URL would later surface in post_to_kiosk.py --dry-run / error output. The
+# authority is everything after :// up to the first / ; an @ in it is userinfo.
+_authority="${ENDPOINT_URL#*://}"; _authority="${_authority%%/*}"
+case "$_authority" in
+  *@*) echo "DASHBOARD_ENDPOINT_URL must not contain userinfo (user:pass@); put credentials in DASHBOARD_TOKEN" >&2; exit 1 ;;
+esac
+unset _authority
 case "$ENDPOINT_URL" in
   */api/message) ;;
   *) echo "DASHBOARD_ENDPOINT_URL must be the FULL message-API URL ending in /api/message" >&2; exit 1 ;;
