@@ -1,20 +1,13 @@
 #!/usr/bin/env python3
 """post_to_kiosk.py — shared POST helper for the WRAPPER-BASED ld- bundles.
 
-Each wrapper-based ld- bundle ships a tiny wrapper (`post_message.py`,
-`post_alert.py`, `post_digest.py`, `post_nudge.py`) that sets three
-module-level constants and calls `main()`. The wrapper is the only file the
-cron/agent invokes; this module is never on the agent's invocation path
-directly. That keeps the no-CLI-content security model intact: the
+Every ld- producer ships a tiny wrapper (`post_message.py`, `post_alert.py`,
+`post_digest.py`, `post_nudge.py`, `post_weather.py`, `post_sports.py`) that
+sets the module-level constants and calls `main()`. The wrapper is the only
+file the cron/agent invokes; this module is never on the agent's invocation
+path directly. That keeps the no-CLI-content security model intact: the
 bundle-specific `MESSAGE_FILE` path lives in the wrapper (one fixed string
 per bundle), not on the command line.
-
-The Pattern-B *scheduled* runners post to the kiosk directly from their
-`scheduled/run.js` (same http(s)-allowed, no-redirect, fail-loud posture, in JS),
-not via this helper: `ld-weather` posts only that way (no wrapper at all),
-and `ld-calendar-nudge` is a hybrid — its scheduled `run.js` posts directly
-while it still ships `post_nudge.py` for its manual reminder path (which
-uses this helper).
 
 Read from fixed sources the caller cannot redirect — not from argv:
   - message text:  caller-set MESSAGE_FILE (per-bundle, e.g. /tmp/ld-<x>-text)
@@ -31,8 +24,8 @@ override it):
 
     import post_to_kiosk
     post_to_kiosk.MESSAGE_FILE = "/tmp/ld-<bundle>-text"
-    post_to_kiosk.CARD = "1" | "2" | "3" | "4"
-    post_to_kiosk.BODY_TYPE = "alert" | "affirmation" | "digest"
+    post_to_kiosk.CARD = "1" | "2" | "3" | "4" | "5"
+    post_to_kiosk.BODY_TYPE = "alert" | "affirmation" | "weather" | "digest" | "sports"
     post_to_kiosk.main()
 
 `--dry-run` always redacts the body text to `<redacted, N chars>` — some
