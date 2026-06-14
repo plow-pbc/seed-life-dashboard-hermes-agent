@@ -205,11 +205,21 @@ if [ "$NEED_ASSEMBLE" = "1" ]; then
     || { echo "no PLOW_CONNECTOR_TOKEN/PLOW_CHAT_TOKEN in $ENV_FILE. $LINK_HINT" >&2; exit 1; }
   # Capture stderr to a tempfile so a real failure (expired token, wrong
   # PLOW_CHAT_BASE_URL, network) surfaces the connector's own error verbatim —
-  # NOT the misleading "unlinked" hint. The connector never prints the token.
+  # NOT the misleading "unlinked" hint. Before printing, REDACT the bearer: the
+  # connector (a cross-repo seed-hermes-plow file) shouldn't echo it, but the
+  # branch fires on auth errors, so we never trust that — scrub the token bytes
+  # from the surfaced stderr unconditionally (assume the operator is screen-sharing).
   STATUS_ERR=$(mktemp)
   GMAIL_STATUS=$(PLOW_CONNECTOR_TOKEN="$PLOW_TOKEN" PLOW_CHAT_BASE_URL="$PLOW_CHAT_BASE_URL" \
     python3 "$CONNECTOR" gmail status 2>"$STATUS_ERR") \
-    || { echo "Plow Gmail connector status call failed:" >&2; cat "$STATUS_ERR" >&2; rm -f "$STATUS_ERR"; exit 1; }
+    || { echo "Plow Gmail connector status call failed:" >&2
+         TOK="$PLOW_TOKEN" python3 - "$STATUS_ERR" <<'PY' >&2
+import os, sys
+tok = os.environ.get("TOK", "")
+err = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+sys.stderr.write(err.replace(tok, "<redacted>") if tok else err)
+PY
+         rm -f "$STATUS_ERR"; exit 1; }
   rm -f "$STATUS_ERR"
   unset PLOW_TOKEN
   # Parse the connected default account; exit non-zero unless connected with a
