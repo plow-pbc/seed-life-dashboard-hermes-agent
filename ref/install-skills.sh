@@ -207,8 +207,9 @@ if [ "$NEED_ASSEMBLE" = "1" ]; then
   # PLOW_CHAT_BASE_URL, network) surfaces the connector's own error verbatim —
   # NOT the misleading "unlinked" hint. Before printing, REDACT the bearer: the
   # connector (a cross-repo seed-hermes-plow file) shouldn't echo it, but the
-  # branch fires on auth errors, so we never trust that — scrub the token bytes
-  # from the surfaced stderr unconditionally (assume the operator is screen-sharing).
+  # branch fires on auth errors, so we never trust that — scrub VERBATIM
+  # occurrences of the token bytes from the surfaced stderr (covers the dominant
+  # plaintext Authorization-dump risk; assume the operator is screen-sharing).
   STATUS_ERR=$(mktemp)
   GMAIL_STATUS=$(PLOW_CONNECTOR_TOKEN="$PLOW_TOKEN" PLOW_CHAT_BASE_URL="$PLOW_CHAT_BASE_URL" \
     python3 "$CONNECTOR" gmail status 2>"$STATUS_ERR") \
