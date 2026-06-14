@@ -115,20 +115,32 @@ done
 #    $ENDPOINT_URL so the bytes written are the ones validation passed.
 ENV_FILE="${DATA_DIR%/}/.env"
 mkdir -p "$DATA_DIR"
-ENV_TMP=$(mktemp "${DATA_DIR%/}/.env.XXXXXX")
-# Preserve any non-DASHBOARD_* lines the gateway activation wrote (PLOW_CHAT_*).
-if [ -f "$ENV_FILE" ]; then
-  grep -v -E '^(DASHBOARD_ENDPOINT_URL|DASHBOARD_TOKEN)=' "$ENV_FILE" > "$ENV_TMP" || true
-fi
-DASHBOARD_ENDPOINT_URL="$ENDPOINT_URL" python3 - "$ENV_TMP" <<'PY'
+
+# env_set KEY [KEY...] — update-in-place the named keys in data/.env (mode 600)
+# via tempfile + atomic rename, reading each value from the SAME-NAMED env var
+# (never argv, so values are never echoed). Strips any prior line for each key,
+# preserves all other lines (e.g. the PLOW_CHAT_* the gateway activation wrote),
+# then appends the current values. Shared by the DASHBOARD_* and TZ writes.
+env_set() {
+  local tmp; tmp=$(mktemp "${DATA_DIR%/}/.env.XXXXXX")
+  if [ -f "$ENV_FILE" ]; then
+    local strip; strip=$(printf '^(%s)=' "$(printf '%s|' "$@" | sed 's/|$//')")
+    grep -v -E "$strip" "$ENV_FILE" > "$tmp" || true
+  fi
+  KEYS="$*" python3 - "$tmp" <<'PY'
 import os, sys
-# Append the two values read from the environment (never argv) to the env file.
 with open(sys.argv[1], "a", encoding="utf-8") as f:
-    f.write(f'DASHBOARD_ENDPOINT_URL={os.environ["DASHBOARD_ENDPOINT_URL"]}\n')
-    f.write(f'DASHBOARD_TOKEN={os.environ["DASHBOARD_TOKEN"]}\n')
+    for key in os.environ["KEYS"].split():
+        f.write(f'{key}={os.environ[key]}\n')
 PY
-chmod 600 "$ENV_TMP"
-mv "$ENV_TMP" "$ENV_FILE"
+  chmod 600 "$tmp"
+  mv "$tmp" "$ENV_FILE"
+}
+
+# We re-export the validated $ENDPOINT_URL so the bytes written are the ones
+# validation passed.
+DASHBOARD_ENDPOINT_URL="$ENDPOINT_URL" DASHBOARD_TOKEN="$DASHBOARD_TOKEN" \
+  env_set DASHBOARD_ENDPOINT_URL DASHBOARD_TOKEN
 # Clear the secrets from the environment after landing them — the ld-config
 # assembly + cron child below have no use for these values.
 unset DASHBOARD_ENDPOINT_URL DASHBOARD_TOKEN
@@ -245,10 +257,21 @@ if [ -n "$FAILS" ]; then
   exit 1
 fi
 
+# Land TZ=family.timezone into data/.env so the Hermes runtime (which loads
+# data/.env into each gateway/cron session) fires cron + producers in the
+# household timezone. `hermes cron` has no per-job tz flag, so schedules fire in
+# the container's TZ; this makes that TZ the household's. Read from the
+# now-confirmed landed config (the gate above guarantees it parses).
+TZ_VALUE=$(jq -r '.family.timezone // ""' "$LD_CONFIG")
+if [ -n "$TZ_VALUE" ]; then
+  TZ="$TZ_VALUE" env_set TZ
+  unset TZ_VALUE
+fi
+
 echo "" >&2
 echo "Skills installed:" >&2
 echo "  ld-* skills copied into $SKILLS_DEST/" >&2
-echo "  DASHBOARD_ENDPOINT_URL, DASHBOARD_TOKEN landed in $ENV_FILE (mode 600)" >&2
+echo "  DASHBOARD_ENDPOINT_URL, DASHBOARD_TOKEN, TZ landed in $ENV_FILE (mode 600)" >&2
 echo "  ld-config resolved at $LD_CONFIG" >&2
 
 # 6. Register the producers' Hermes cron jobs by execing into the running
