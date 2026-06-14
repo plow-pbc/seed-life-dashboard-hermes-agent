@@ -1,0 +1,7 @@
+*.tar.gz
+*.log
+.DS_Store
+__pycache__/
+*.pyc
+verify-report.json
+install-report.json
