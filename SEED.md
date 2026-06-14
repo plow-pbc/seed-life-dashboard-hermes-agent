@@ -94,7 +94,7 @@ bash "$(dirname "${BASH_SOURCE[0]:-$0}")/ref/install-skills.sh" --scaffold ./her
 ### Producer crons are registered
 
 - All six producer skills run as **Hermes cron jobs** — one per producer — created by the installer. There is no `plow-scheduled-runner` and no Plow `cron action=add`: `hermes cron` is host-drivable, so the installer registers each job directly by execing into the running container (`docker compose exec -T <service> hermes cron create '<schedule>' --prompt "<prompt>"`). The schedule + prompt for each job are the values in each skill's `SKILL.md § Scheduling`:
-  - **`ld-morning-updates`** — `5 7 * * *`, posts the morning affirmation as card 2.
+  - **`ld-morning-updates`** — `0 7 * * *`, posts the morning affirmation as card 2.
   - **`ld-morning-triage`** — `5 7 * * *`, posts the morning priority alert as card 1.
   - **`ld-weather`** — `0 6 * * *`, posts the weather tile as card 3.
   - **`ld-sports`** — `0 6 * * *`, posts the sports tile as card 5.
