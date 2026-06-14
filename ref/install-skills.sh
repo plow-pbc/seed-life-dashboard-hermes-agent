@@ -12,9 +12,10 @@
 #
 # Idempotent: re-running re-copies every skill, rewrites the two data/.env
 # values, preserves a gate-passing operator-edited ld-config, and skips cron
-# jobs that already exist. The ld-config is ASSEMBLED from the three operator
-# inputs (LD_OWNER_NAME / LD_OWNER_IMESSAGE / LD_CALENDAR_ACCOUNT) on first
-# install only.
+# jobs that already exist. The ld-config is ASSEMBLED on first install only,
+# from the single operator input (LD_OWNER_NAME) plus the primary calendar
+# account DERIVED from the connected Plow Gmail connector (plow_connector.py
+# gmail status) — link Google to Plow before installing.
 #
 # Input validation + ld-config write happen BEFORE the cron registration so no
 # scheduled producer is activated until the runtime config + credentials it
@@ -40,8 +41,9 @@ Required env inputs (collected up front by the umbrella installer):
   DASHBOARD_ENDPOINT_URL  full /api/message URL of the Pi message API
   DASHBOARD_TOKEN         bearer the Pi message API validates
   LD_OWNER_NAME           household owner's display name
-  LD_OWNER_IMESSAGE       owner's contact handle (E.164 phone or email)
-  LD_CALENDAR_ACCOUNT     account owning the primary calendar
+
+The primary calendar account is DERIVED from the connected Plow Gmail connector
+(plow_connector.py gmail status) — link Google to Plow before installing.
 EOF
 }
 
@@ -159,7 +161,6 @@ mkdir -p "$LD_CONFIG_DIR"
 ld_config_gate() {  # ld_config_gate FILE -> prints failures (empty == pass)
   jq -r '
     [ if ((.family.owner.name     // "") | test("\\S")) then empty else "family.owner.name is blank" end,
-      if ((.family.owner.imessage // "") | test("\\S")) then empty else "family.owner.imessage is blank" end,
       if ((.calendar.sources | type) == "array" and (.calendar.sources | length) >= 1)
         then empty else "calendar.sources is not a non-empty array" end,
       if ([.calendar.sources[]? | select(((.account // "") | test("\\S")) | not)] | length) == 0
@@ -178,15 +179,41 @@ elif [ -n "$(ld_config_gate "$LD_CONFIG")" ]; then
 fi
 
 if [ "$NEED_ASSEMBLE" = "1" ]; then
-  # All three inputs are REQUIRED to assemble — a missing one fails loud
-  # rather than landing a partial config.
-  for v in LD_OWNER_NAME LD_OWNER_IMESSAGE LD_CALENDAR_ACCOUNT; do
-    eval "val=\${$v:-}"
-    case "$val" in
-      *[![:space:]]*) ;;  # contains a non-whitespace char (matches the jq gate's \S)
-      *) echo "$v is unset or blank — the installer must collect the three LD_* inputs before assembling ld-config" >&2; exit 1 ;;
-    esac
-  done
+  # LD_OWNER_NAME is the sole operator input REQUIRED to assemble — a missing
+  # one fails loud rather than landing a partial config.
+  case "${LD_OWNER_NAME:-}" in
+    *[![:space:]]*) ;;  # contains a non-whitespace char (matches the jq gate's \S)
+    *) echo "LD_OWNER_NAME is unset or blank — the installer must collect the owner's display name before assembling ld-config" >&2; exit 1 ;;
+  esac
+
+  # Derive the primary calendar account from the connected Plow Gmail connector
+  # instead of asking for it. The plow-connectors skill + creds were landed by
+  # seed-hermes-plow before this SEED recurses; we read the connector's default
+  # account from `plow_connector.py gmail status` (the top-level .account).
+  # Fail LOUD if the connector is missing/unlinked — never land a blank account.
+  CONNECTOR="$SKILLS_DEST/plow-connectors/plow_connector.py"
+  LINK_HINT="Link your Google account to Plow before installing: the dashboard's calendar/digest/triage producers read it via the Plow connector. Then re-run."
+  [ -f "$CONNECTOR" ] \
+    || { echo "plow-connectors skill missing at $CONNECTOR. $LINK_HINT" >&2; exit 1; }
+  # Source the connector creds from data/.env WITHOUT echoing them: extract the
+  # needed keys, eval them into this shell's env, pass them to the connector.
+  PLOW_CHAT_BASE_URL=$(grep -m1 -E '^PLOW_CHAT_BASE_URL=' "$ENV_FILE" 2>/dev/null | sed 's/^PLOW_CHAT_BASE_URL=//') || true
+  PLOW_TOKEN=$(grep -m1 -E '^PLOW_CONNECTOR_TOKEN=' "$ENV_FILE" 2>/dev/null | sed 's/^PLOW_CONNECTOR_TOKEN=//') || true
+  [ -n "$PLOW_TOKEN" ] \
+    || PLOW_TOKEN=$(grep -m1 -E '^PLOW_CHAT_TOKEN=' "$ENV_FILE" 2>/dev/null | sed 's/^PLOW_CHAT_TOKEN=//') || true
+  [ -n "$PLOW_TOKEN" ] \
+    || { echo "no PLOW_CONNECTOR_TOKEN/PLOW_CHAT_TOKEN in $ENV_FILE. $LINK_HINT" >&2; exit 1; }
+  GMAIL_STATUS=$(PLOW_CONNECTOR_TOKEN="$PLOW_TOKEN" PLOW_CHAT_BASE_URL="$PLOW_CHAT_BASE_URL" \
+    python3 "$CONNECTOR" gmail status 2>/dev/null) \
+    || { echo "Plow Gmail connector status call failed. $LINK_HINT" >&2; exit 1; }
+  unset PLOW_TOKEN
+  # Parse the connected default account; exit non-zero unless connected with a
+  # non-blank .account (jq prints nothing → the [ -n ] guard fails loud).
+  LD_CALENDAR_ACCOUNT=$(printf '%s' "$GMAIL_STATUS" \
+    | jq -r 'if (.connected == true) and ((.account // "") | test("\\S")) then .account else empty end' 2>/dev/null) || true
+  [ -n "$LD_CALENDAR_ACCOUNT" ] \
+    || { echo "Plow Gmail connector reports no connected account. $LINK_HINT" >&2; exit 1; }
+  unset GMAIL_STATUS
 
   # Timezone: honor a pre-exported LD_TIMEZONE; otherwise autodetect from
   # readlink /etc/localtime, falling back to America/Los_Angeles. Non-PII, so
@@ -203,16 +230,15 @@ if [ "$NEED_ASSEMBLE" = "1" ]; then
     exit 1
   fi
 
-  # Assemble. The PII values (owner name/handle, calendar account) reach jq
+  # Assemble. The PII values (owner name, derived calendar account) reach jq
   # ONLY through the environment, read inside the filter via the `env` builtin
   # — NEVER on argv. Only the non-PII timezone is passed via --arg.
   TMP=$(mktemp "$LD_CONFIG_DIR/.config.json.XXXXXX")
   LD_OWNER_NAME="$LD_OWNER_NAME" \
-  LD_OWNER_IMESSAGE="$LD_OWNER_IMESSAGE" \
   LD_CALENDAR_ACCOUNT="$LD_CALENDAR_ACCOUNT" \
   jq -n --arg tz "$LD_TIMEZONE" '
     {
-      family: { owner: { name: env.LD_OWNER_NAME, imessage: env.LD_OWNER_IMESSAGE }, timezone: $tz },
+      family: { owner: { name: env.LD_OWNER_NAME }, timezone: $tz },
       calendar: { sources: [ { account: env.LD_CALENDAR_ACCOUNT, calendar_id: "primary", name: "Personal" } ] },
       morning_updates: { review_window_hours: 24 },
       weekly_digest: { length: "", long_lead: [] },
@@ -243,9 +269,10 @@ else
   chmod 600 "$LD_CONFIG"
 fi
 
-# The three operator inputs arrive EXPORTED in this script's environment. Clear
-# them now — before the cron child below — so owner PII is not inherited.
-unset LD_OWNER_NAME LD_OWNER_IMESSAGE LD_CALENDAR_ACCOUNT
+# The owner input arrives EXPORTED in this script's environment and the calendar
+# account was derived above. Clear both now — before the cron child below — so
+# owner PII is not inherited.
+unset LD_OWNER_NAME LD_CALENDAR_ACCOUNT
 
 # Pre-cron gate: refuse to register producer crons unless the landed config
 # passes the structural gate. NAMES the failing invariant, never the PII.

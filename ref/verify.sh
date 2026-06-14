@@ -58,7 +58,6 @@ if _cmode=$(stat -c '%a' "$LD_CONFIG" 2>/dev/null || stat -f '%Lp' "$LD_CONFIG" 
 fi
 GATE=$(jq -r '
   [ if ((.family.owner.name    // "") | test("\\S")) then empty else "family.owner.name is blank" end,
-    if ((.family.owner.imessage // "") | test("\\S")) then empty else "family.owner.imessage is blank" end,
     if ((.calendar.sources | type) == "array" and (.calendar.sources | length) >= 1)
       then empty else "calendar.sources is not a non-empty array" end,
     if ([.calendar.sources[]? | select(((.account // "") | test("\\S")) | not)] | length) == 0
@@ -69,7 +68,7 @@ GATE=$(jq -r '
 ' "$LD_CONFIG")
 if [ -n "$GATE" ]; then
   echo "FAIL v-ld-config: $LD_CONFIG does not pass the install gate: $GATE" >&2
-  echo "Fix the config (or re-run install with the LD_OWNER_* / LD_CALENDAR_ACCOUNT inputs set) before verifying." >&2
+  echo "Fix the config (or re-run install with LD_OWNER_NAME set + Google linked in Plow — the calendar account is derived from the Plow Gmail connector) before verifying." >&2
   exit 1
 fi
 echo "OK   v-ld-config"
