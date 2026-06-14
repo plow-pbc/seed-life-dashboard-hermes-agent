@@ -49,17 +49,22 @@ Tell any AI agent:
 
 > Install `https://github.com/plow-pbc/seed-life-dashboard-hermes-agent`
 
-With the five inputs in the environment, the install is one block:
+The install is a **3-question install** — `LD_OWNER_NAME` (asked) plus the two
+endpoint values the umbrella derives. The primary **calendar account is derived**
+from the connected Plow Gmail connector (`plow_connector.py gmail status`), not
+asked — so link Google to Plow first. With the inputs in the environment, the
+install is one block:
 
 ```bash
-export DASHBOARD_ENDPOINT_URL DASHBOARD_TOKEN LD_OWNER_NAME LD_OWNER_IMESSAGE LD_CALENDAR_ACCOUNT
+export DASHBOARD_ENDPOINT_URL DASHBOARD_TOKEN LD_OWNER_NAME
 bash ref/install-skills.sh --scaffold ./hermes-agent
 ```
 
 It copies the `ld-*` skills into `data/skills/`, lands `DASHBOARD_*` into
-`data/.env`, assembles `data/ld/config.json` from the three household inputs,
-and registers the six producer crons (exec'd into the running container; defer
-with `SKIP_CRON=1` and the umbrella runs them after `docker compose up`).
+`data/.env`, assembles `data/ld/config.json` from the owner name + the derived
+calendar account, and registers the six producer crons (exec'd into the running
+container; defer with `SKIP_CRON=1` and the umbrella runs them after
+`docker compose up`).
 
 The umbrella
 [`seed-life-dashboard-hermes`](https://github.com/plow-pbc/seed-life-dashboard-hermes)
