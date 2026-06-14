@@ -23,14 +23,13 @@
 set -euo pipefail
 
 SCAFFOLD_DIR="${HERMES_SCAFFOLD_DIR:-./hermes-agent}"
-DATA_DIR=""
 # The compose service the producers run in. The seed-hermes scaffold owns
 # compose.yaml; its service name is not fixed by this SEED, so it is overridable.
 HERMES_SERVICE="${HERMES_SERVICE:-hermes-agent}"
 
 usage() {
   cat <<EOF
-Usage: ref/install-skills.sh [--scaffold ./hermes-agent] [--data-dir DIR]
+Usage: ref/install-skills.sh [--scaffold ./hermes-agent]
 
 Installs the ld-* producer skills into <scaffold>/data/skills/, lands
 data/.env (DASHBOARD_*) + data/ld/config.json, and registers the producers'
@@ -49,13 +48,12 @@ EOF
 while [ $# -gt 0 ]; do
   case "$1" in
     --scaffold) SCAFFOLD_DIR="$2"; shift 2 ;;
-    --data-dir) DATA_DIR="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
 
-[ -n "$DATA_DIR" ] || DATA_DIR="${SCAFFOLD_DIR%/}/data"
+DATA_DIR="${SCAFFOLD_DIR%/}/data"
 
 # 1. Required tools. No lsof/pgrep — there is no plowd port to discover.
 for tool in jq python3; do
