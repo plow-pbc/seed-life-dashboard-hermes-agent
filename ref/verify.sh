@@ -1,63 +1,61 @@
 #!/usr/bin/env bash
-# Deterministic implementation of SEED.md ## Verify for seed-life-dashboard-agent.
+# Deterministic implementation of SEED.md ## Verification for
+# seed-life-dashboard-hermes-agent (the four host-checkable structural prompts).
 
 set -euo pipefail
 
-PLOW_BUNDLE_ID="${PLOW_BUNDLE_ID:-co.plow.app}"
-APP_SUPPORT="$HOME/Library/Application Support/$PLOW_BUNDLE_ID"
-SECRETS_DIR="$APP_SUPPORT/agent-runtime/secrets"
-CONTAINERS_DIR="$APP_SUPPORT/containers"
-LD_CONFIG="$APP_SUPPORT/agent-runtime/runtime/ld/config.json"
-
-# v1: dashboard-endpoint-url and dashboard-token present, mode 600, non-empty.
-for s in dashboard-endpoint-url dashboard-token; do
-  f="$SECRETS_DIR/$s"
-  [ -s "$f" ] || { echo "FAIL v-secrets: $f missing or empty" >&2; exit 1; }
-  [ "$(stat -f '%Lp' "$f")" = "600" ] \
-    || { echo "FAIL v-secrets: $f not mode 600" >&2; exit 1; }
+SCAFFOLD_DIR="${HERMES_SCAFFOLD_DIR:-./hermes-agent}"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --scaffold) SCAFFOLD_DIR="$2"; shift 2 ;;
+    *) echo "Unknown argument: $1" >&2; exit 2 ;;
+  esac
 done
+DATA_DIR="${SCAFFOLD_DIR%/}/data"
+
+ENV_FILE="${DATA_DIR%/}/.env"
+LD_CONFIG="${DATA_DIR%/}/ld/config.json"
+SKILLS_DIR="${DATA_DIR%/}/skills"
+
+# ── v-secrets: DASHBOARD_ENDPOINT_URL + DASHBOARD_TOKEN present in data/.env,
+#    well-shaped, checked WITHOUT printing either value. data/.env mode 600
+#    where the host supports it.
+[ -f "$ENV_FILE" ] || { echo "FAIL v-secrets: $ENV_FILE missing" >&2; exit 1; }
+# Extract each value's RHS without echoing it: read the first matching line,
+# strip the KEY= prefix. The values never reach a line we echo — we only test.
+_ep=$(grep -m1 -E '^DASHBOARD_ENDPOINT_URL=' "$ENV_FILE" | sed 's/^DASHBOARD_ENDPOINT_URL=//') || true
+_tok=$(grep -m1 -E '^DASHBOARD_TOKEN=' "$ENV_FILE" | sed 's/^DASHBOARD_TOKEN=//') || true
+[ -n "$_ep" ]  || { echo "FAIL v-secrets: DASHBOARD_ENDPOINT_URL missing or empty in $ENV_FILE" >&2; exit 1; }
+[ -n "$_tok" ] || { echo "FAIL v-secrets: DASHBOARD_TOKEN missing or empty in $ENV_FILE" >&2; exit 1; }
+# mode 600 where stat supports it (GNU `-c`, BSD `-f`); skip silently if neither.
+if _mode=$(stat -c '%a' "$ENV_FILE" 2>/dev/null || stat -f '%Lp' "$ENV_FILE" 2>/dev/null); then
+  [ "$_mode" = "600" ] || { echo "FAIL v-secrets: $ENV_FILE not mode 600 (is $_mode)" >&2; exit 1; }
+fi
 echo "OK   v-secrets"
 
-# v-endpoint-shape / v-token-shape: the secret files are whitespace-FREE by
-# contract (SEED.md; the installer rejects the same bytes before mutation, and
-# writes verbatim with no trailing newline). Verify certifies that written
-# contract — no edge-trim leniency — and never prints either value. The check
-# is BYTE-level (grep is line-oriented and cannot see \n, the most likely
-# corruption): whitespace-free ⇔ raw size equals the [:space:]-stripped size.
-# v-secrets above already guarantees both files are non-empty.
-ws_free() { [ "$(wc -c < "$1")" -eq "$(tr -d '[:space:]' < "$1" | wc -c)" ]; }
-_ep_file="$SECRETS_DIR/dashboard-endpoint-url"
-if ! ws_free "$_ep_file" \
-  || ! grep -qE '^https?://[^[:space:]]+/api/message$' "$_ep_file"; then
-  echo "FAIL v-endpoint-shape: dashboard-endpoint-url must be a whitespace-free http(s)://…/api/message URL" >&2
-  exit 1
-fi
-unset _ep_file
+# ── v-endpoint-shape / v-token-shape: whitespace-free; endpoint matches
+#    http(s)://…/api/message. Never prints either value.
+case "$_ep" in
+  *[[:space:]]*) echo "FAIL v-endpoint-shape: DASHBOARD_ENDPOINT_URL contains whitespace" >&2; exit 1 ;;
+esac
+printf '%s' "$_ep" | grep -qE '^https?://[^[:space:]]+/api/message$' \
+  || { echo "FAIL v-endpoint-shape: DASHBOARD_ENDPOINT_URL must be http(s)://…/api/message" >&2; exit 1; }
 echo "OK   v-endpoint-shape"
-
-if ! ws_free "$SECRETS_DIR/dashboard-token"; then
-  echo "FAIL v-token-shape: dashboard-token must be whitespace-free (RFC 6750 bearer)" >&2
-  exit 1
-fi
+case "$_tok" in
+  *[[:space:]]*) echo "FAIL v-token-shape: DASHBOARD_TOKEN must be whitespace-free (RFC 6750 bearer)" >&2; exit 1 ;;
+esac
 echo "OK   v-token-shape"
+unset _ep _tok
 
-# v1b: ld-config present + parses as JSON + passes the minimal
-# structural gate. This is the SAME gate install-bundles.sh enforces
-# pre-mutation (SEED.md ## Actions > minimal structural gate), so
-# install and verify can never drift. The gate is deliberately MINIMAL
-# — it does NOT mirror run.js's per-field runtime requirements (those
-# are the bundles' single source of truth) — it asserts only the
-# invariants that separate a USABLE filled config from an unedited
-# template or a blank-filled one:
-#   - family.owner.{name,imessage} present and non-blank
-#   - calendar.sources a non-empty array, each source's account non-blank
-#   - no string value left as a bare [UPPER_SNAKE] placeholder
-# The autodetected timezone is NOT re-checked: a preserved / operator-
-# edited config may legitimately carry a non-host zone (laptop moved,
-# remote household), so enforcing it here would falsely reject a valid
-# config. PII never prints — only the failing invariant's name.
+# ── v-ld-config: present, parses, passes the minimal structural gate. SAME gate
+#    install-skills.sh enforces, so install + verify never drift. PII never
+#    prints — only the failing invariant's name.
 [ -f "$LD_CONFIG" ] || { echo "FAIL v-ld-config: $LD_CONFIG missing" >&2; exit 1; }
 jq -e . "$LD_CONFIG" >/dev/null || { echo "FAIL v-ld-config: $LD_CONFIG is not valid JSON" >&2; exit 1; }
+# mode 600 where stat supports it (GNU `-c`, BSD `-f`) — config is PII-bearing.
+if _cmode=$(stat -c '%a' "$LD_CONFIG" 2>/dev/null || stat -f '%Lp' "$LD_CONFIG" 2>/dev/null); then
+  [ "$_cmode" = "600" ] || { echo "FAIL v-ld-config: $LD_CONFIG not mode 600 (is $_cmode)" >&2; exit 1; }
+fi
 GATE=$(jq -r '
   [ if ((.family.owner.name    // "") | test("\\S")) then empty else "family.owner.name is blank" end,
     if ((.family.owner.imessage // "") | test("\\S")) then empty else "family.owner.imessage is blank" end,
@@ -76,8 +74,8 @@ if [ -n "$GATE" ]; then
 fi
 echo "OK   v-ld-config"
 
-# Each ld-* bundle's distinctive file. ld-shared is a helper module (no
-# SKILL.md); the other six are full skills with SKILL.md.
+# ── v-skills: all seven ld-* markers present under data/skills/. ld-shared is a
+#    helper module (no SKILL.md); the other six are full skills with SKILL.md.
 declare -a probes=(
   "ld-shared/scripts/post_to_kiosk.py"
   "ld-calendar-nudge/SKILL.md"
@@ -87,70 +85,43 @@ declare -a probes=(
   "ld-weather/SKILL.md"
   "ld-sports/SKILL.md"
 )
-
-# Bundle install location varies by plowd build:
-#   - current builds install to ~/Plow/skills/
-#   - v2 container builds use containers/<agent-UUID>/workspace[/host]/skills/
-# Resolve by probing candidate roots for ld-shared's marker file. The list is
-# built directly — current host root first, then any container workspace via
-# glob — with no index.json/UUID resolver: that resolver's `ls … | grep … |
-# head` could exit non-zero under `set -euo pipefail` on a current build with no
-# containers/ dir and abort BEFORE ~/Plow/skills is ever checked. An unmatched
-# glob stays literal and simply fails the `-f` test, falling through.
-MARKER="${probes[0]}"   # single source of truth for the bundle marker file
-WORKSPACE_SKILLS=""
-for cand in "$HOME/Plow/skills" \
-            "$CONTAINERS_DIR"/*/workspace/skills \
-            "$CONTAINERS_DIR"/*/workspace/host/skills; do
-  [ -f "$cand/$MARKER" ] && { WORKSPACE_SKILLS="$cand"; break; }
-done
-[ -n "$WORKSPACE_SKILLS" ] \
-  || { echo "FAIL v-bundles: ld-* bundles not found (checked ~/Plow/skills and container workspaces)" >&2; exit 1; }
-
+[ -d "$SKILLS_DIR" ] || { echo "FAIL v-skills: $SKILLS_DIR missing" >&2; exit 1; }
 for p in "${probes[@]}"; do
-  [ -f "$WORKSPACE_SKILLS/$p" ] \
-    || { echo "FAIL v-bundles: $WORKSPACE_SKILLS/$p missing" >&2; exit 1; }
+  [ -f "$SKILLS_DIR/$p" ] \
+    || { echo "FAIL v-skills: $SKILLS_DIR/$p missing" >&2; exit 1; }
 done
-echo "OK   v-bundles ($WORKSPACE_SKILLS)"
+echo "OK   v-skills ($SKILLS_DIR)"
 
-# v3: dry-run a wrapper. We use the host-side repo-local copy here — same
-# wrapper code that's installed inside the VM, just executed from the
-# host with rebound module-level constants. This proves the secrets
-# resolve and the wrapper executes; it does NOT post over the network.
-SEED_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
-DRY_INPUT=$(mktemp -t agent-verify-msg)
-DRY_OUT=$(mktemp -t agent-verify-out)
+# ── v-dry-run: invoke one installed wrapper with --dry-run + the DASHBOARD_*
+#    env vars set, assert the redacted-body line. Proves the env resolves and
+#    the wrapper executes; it does NOT post over the network. We run the
+#    INSTALLED copy under data/skills/ so a broken install fails verify. The
+#    endpoint/token here are dummy values used only to satisfy the wrapper's
+#    read — the real values stay in data/.env, never read or printed here.
+WRAPPER="$SKILLS_DIR/ld-morning-updates/scripts/post_message.py"
+[ -f "$WRAPPER" ] || { echo "FAIL v-dry-run: $WRAPPER missing" >&2; exit 1; }
+DRY_INPUT=$(mktemp)
+DRY_OUT=$(mktemp)
 trap 'rm -f "$DRY_INPUT" "$DRY_OUT"' EXIT
 echo "hello from verify" > "$DRY_INPUT"
-# Capture the dry-run's exit status explicitly (no `|| true`): a hard
-# failure (e.g. a Python import error in the wrapper) must fail verify,
-# not be silently masked so the grep becomes the only signal. The
-# output goes to a private mktemp file (not a fixed world-readable
-# /tmp path) to avoid symlink/TOCTOU + concurrent-run collisions.
 DRY_RC=0
-WRAPPER="$SEED_ROOT/ref/team-skills/ld-morning-updates/scripts/post_message.py" \
-ENDPOINT_FILE="$SECRETS_DIR/dashboard-endpoint-url" \
-TOKEN_FILE="$SECRETS_DIR/dashboard-token" \
-DRY_INPUT="$DRY_INPUT" \
+WRAPPER="$WRAPPER" DRY_INPUT="$DRY_INPUT" \
+DASHBOARD_ENDPOINT_URL="http://verify.invalid/api/message" \
+DASHBOARD_TOKEN="verify-dryrun-token" \
 python3 - >"$DRY_OUT" 2>&1 <<'PY' || DRY_RC=$?
 import os, sys, importlib.util
-# Load a REAL wrapper so its CARD/BODY_TYPE assignments are load-bearing:
-# a wrapper missing the CARD contract must fail this check, not be masked
-# by verify assigning the constants itself.
+# Load a REAL wrapper so its CARD/BODY_TYPE assignments are load-bearing.
 spec = importlib.util.spec_from_file_location("post_message", os.environ["WRAPPER"])
 wrapper = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(wrapper)
 ptk = wrapper.post_to_kiosk
-# Rebind ONLY the host-side file paths (the wrapper hardcodes the VM
-# paths /config/secrets/... and its /tmp message file).
-ptk.ENDPOINT_FILE = os.environ["ENDPOINT_FILE"]
-ptk.TOKEN_FILE = os.environ["TOKEN_FILE"]
+# Rebind ONLY the message-text handoff path (the wrapper hardcodes /tmp/...);
+# endpoint + token resolve from the DASHBOARD_* env vars above.
 ptk.MESSAGE_FILE = os.environ["DRY_INPUT"]
 sys.argv = ["post_message.py", "--dry-run"]
 try:
     ptk.main()
 except SystemExit as e:
-    # main() may exit normally; a clean exit is fine for --dry-run
     if e.code not in (None, 0):
         raise
 PY

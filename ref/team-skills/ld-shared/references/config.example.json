@@ -23,7 +23,7 @@
   "morning_triage": {
     "ranking_instructions": "",
     "exclude": {
-      "imessage_handles": [],
+      "slack_handles": [],
       "email_addresses": []
     }
   },

@@ -7,7 +7,7 @@ description: Build a concise weekly calendar digest for the life-dashboard house
 
 Build a concise, scannable summary of the household's upcoming week.
 
-**Read `/config/runtime/ld/config.json` before starting** — the shared
+**Read `/opt/data/ld/config.json` before starting** — the shared
 life-dashboard config. This digest uses two sections:
 
 - `calendar` — the `sources` list to fetch from.
@@ -16,8 +16,8 @@ life-dashboard config. This digest uses two sections:
   `long_lead` heads-up rules.
 
 The sibling `ld-shared/references/config.example.json` is the
-template for all ld- bundles; the live file lives on the per-install
-`/config` mount and is never committed.
+template for all ld- bundles; the live file lives at
+`/opt/data/ld/config.json` on the Hermes data mount.
 
 ## Core rules
 
@@ -37,30 +37,27 @@ template for all ld- bundles; the live file lives on the per-install
 
 ## Calendar access
 
-Fetch live calendar data using `plow_calendar_search` (not
-`plow_calendar_today` — that computes "today" in the runner's
-process-local timezone, which can differ from `family.timezone` and
-silently drop the household's actual same-day events). For each entry
-in `calendar.sources`, call `plow_calendar_search` with both `account`
-and `calendar_id` from that source, and explicit `start` / `end` ISO
-timestamps for the digest window computed in `family.timezone`. Pass
-`max_results: 250` (or `--max 250` if using the CLI) on every call —
-both the main digest window and any long-lead lookups. The default
-page is 20, which silently truncates a week's worth of events for a
-busy household with multiple connected accounts.
+Fetch live calendar data through the **plow-connectors door** (see
+`ld-shared/references/connectors.md`). For each entry in `calendar.sources`,
+call the connectors door with the source's `calendar_id` and explicit
+`time_min` / `time_max` ISO timestamps for the digest window computed in
+`family.timezone`:
+
+    python3 /opt/data/skills/plow-connectors/plow_connector.py gmail calendar.events.list \
+      '{"calendar_id":"<source calendar_id>","time_min":"<window start ISO>","time_max":"<window end ISO>","max_results":250}'
+
+Pass `max_results: 250` on every call — both the main digest window and any
+long-lead lookups; a small default page silently truncates a week's worth of
+events for a busy household with multiple connected accounts. If the `gmail`
+connector reports `connected:false`, surface that and stop — never build a
+digest from memory.
 
 The digest is read-only: never create, move, or delete events while building
 it.
 
-**To fork off-Plow**: rewrite the Calendar access section above to
-retarget `plow_calendar_search` at whatever adapter the install uses
-(CalDAV, direct ICS reads, a third-party calendar SDK). The retrieval
-workflow / analysis / privacy / delivery sections below are
-provider-agnostic; only Calendar access knows Plow.
-
 ## Retrieval workflow
 
-1. Read `/config/runtime/ld/config.json`.
+1. Read `/opt/data/ld/config.json`.
 2. Compute the live start/end timestamps for the rolling next 7 days.
 3. Fetch events from each configured calendar account.
 4. Merge and sort all events chronologically.
@@ -86,7 +83,7 @@ sensitive titles AND locations entirely (don't generalize, don't paraphrase
 — omit). When in doubt, omit. The block-by-day rendering counts as a
 single calendar slot, so "Wed — 2 appointments" with the slot otherwise
 empty is the right fallback over leaking a sensitive title via the count.
-This rule applies to the iMessage surface too — the digest text written to
+This rule applies to the Plow Chat surface too — the digest text written to
 `/tmp/ld-weekly-digest-text` is the same text returned as the agent's final
 response.
 
@@ -138,21 +135,21 @@ The digest is delivered on two surfaces, in this order:
    with your file-writing tool, then run the helper by absolute path
    (the cron's working directory is not the bundle's directory):
 
-       /workspace/skills/ld-weekly-digest/scripts/post_digest.py
+       /opt/data/skills/ld-weekly-digest/scripts/post_digest.py
 
-   The helper reads endpoint + token from the same `/config/secrets/`
-   paths the other ld- bundles use, posts the digest to the kiosk as
-   card 4 with `type: "digest"`, and consumes the handoff file on success. Fails
-   loudly on any non-200 response — surface that and stop; do not
-   continue to the iMessage step on a failed kiosk post.
+   The helper reads endpoint + token from the `DASHBOARD_ENDPOINT_URL` /
+   `DASHBOARD_TOKEN` env vars the other ld- bundles use (from `data/.env`),
+   posts the digest to the kiosk as card 4 with `type: "digest"`, and
+   consumes the handoff file on success. Fails loudly on any non-200
+   response — surface that and stop; do not continue to the chat step on a
+   failed kiosk post.
 
    Preview without sending: `… post_digest.py --dry-run`.
 
-2. **iMessage** — after the kiosk post succeeds, end the turn by
-   returning the same digest text as the agent's final response. The
-   cron's `delivery.mode=announce, delivery.channel=plow-imessage`
-   routes that response to the owner's iMessage, so the owner gets the
-   same digest on both surfaces (kiosk glanceable, iMessage for
+2. **Plow Chat** — after the kiosk post succeeds, end the turn by
+   returning the same digest text as the agent's final response. The Hermes
+   `plow_chat` gateway delivers that response to the owner's chat, so the
+   owner gets the same digest on both surfaces (kiosk glanceable, chat for
    reading later). The duplicate is deliberate.
 
 When invoked directly in chat (no cron), the kiosk step is skipped —
@@ -160,16 +157,7 @@ just return the digest in the reply.
 
 ## Scheduling
 
-This skill runs from a weekly `cron`-tool job named `ld-weekly-digest`.
-Follow `workspace/AGENTS.md` § Self-managed crons — classifying job state
-on every run (the four enabled-count cases are defined there). The
-job-specific details:
-
-Create it with `cron action=add`:
-
-- `sessionTarget=isolated`, `delivery.mode=announce`,
-  `delivery.channel=plow-imessage`
-- schedule: `{"kind":"cron","expr":"0 7 * * 4","tz":<family.timezone from /config/runtime/ld/config.json>}`
-  (Thursday 07:00 in the configured timezone; adjust the cron expression
-  if a different day/time is preferred)
-- payload message: `Read and follow the skill bundle at /workspace/skills/ld-weekly-digest. Read /config/runtime/ld/config.json first. Build and deliver this week's calendar digest.`
+The schedule (Sundays 17:00 in `family.timezone` — `0 17 * * 0` in the
+container timezone) + prompt are registered by the agent-seed installer's
+`CRON_JOBS` table (`ref/install-skills.sh`), the single source for every
+producer's schedule; this skill never self-registers.
