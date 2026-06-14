@@ -105,7 +105,7 @@ bash "$(dirname "${BASH_SOURCE[0]:-$0}")/ref/install-skills.sh" --scaffold ./her
 ## Verification
 
 1. **Dashboard secrets present and well-shaped.** Does `<scaffold>/data/.env` contain `DASHBOARD_ENDPOINT_URL` matching `http(s)://…/api/message` and `DASHBOARD_TOKEN` as a bare RFC 6750 bearer — both whitespace-free — with `data/.env` mode 600 where the host supports it, checked WITHOUT printing either value? Expected: yes.
-2. **ld-config present, well-formed, and passes the structural gate.** Does `<scaffold>/data/ld/config.json` exist, parse as JSON, AND pass the [minimal structural gate](#minimal-structural-gate)? Expected: yes — a gate-passing config is the SEED's single source of truth for "install complete." The timezone is NOT re-checked here. The values are PII, so only the check name prints.
+2. **ld-config present, well-formed, mode 600, and passes the structural gate.** Does `<scaffold>/data/ld/config.json` exist, parse as JSON, sit at mode 600 (where the host supports it; it is PII-bearing), AND pass the [minimal structural gate](#minimal-structural-gate)? Expected: yes — a gate-passing config is the SEED's single source of truth for "install complete." The timezone is NOT re-checked here. The values are PII, so only the check name prints.
 3. **Skills installed.** Do all seven `ld-*` markers exist under `<scaffold>/data/skills/` — each producer's `SKILL.md` (or, for `ld-shared`, `scripts/post_to_kiosk.py`)? Expected: yes.
 4. **Endpoint+token are syntactically usable.** Does one of the bundled `post_*.py` wrappers invoked with `--dry-run` and the two `DASHBOARD_*` env vars set produce a redacted-body output line (proving the env resolves and the wrapper executes)? Expected: yes.
 

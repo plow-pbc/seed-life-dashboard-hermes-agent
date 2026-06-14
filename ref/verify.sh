@@ -52,6 +52,10 @@ unset _ep _tok
 #    prints — only the failing invariant's name.
 [ -f "$LD_CONFIG" ] || { echo "FAIL v-ld-config: $LD_CONFIG missing" >&2; exit 1; }
 jq -e . "$LD_CONFIG" >/dev/null || { echo "FAIL v-ld-config: $LD_CONFIG is not valid JSON" >&2; exit 1; }
+# mode 600 where stat supports it (GNU `-c`, BSD `-f`) — config is PII-bearing.
+if _cmode=$(stat -c '%a' "$LD_CONFIG" 2>/dev/null || stat -f '%Lp' "$LD_CONFIG" 2>/dev/null); then
+  [ "$_cmode" = "600" ] || { echo "FAIL v-ld-config: $LD_CONFIG not mode 600 (is $_cmode)" >&2; exit 1; }
+fi
 GATE=$(jq -r '
   [ if ((.family.owner.name    // "") | test("\\S")) then empty else "family.owner.name is blank" end,
     if ((.family.owner.imessage // "") | test("\\S")) then empty else "family.owner.imessage is blank" end,

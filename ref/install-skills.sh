@@ -215,6 +215,11 @@ if [ "$NEED_ASSEMBLE" = "1" ]; then
   fi
   mv "$TMP" "$LD_CONFIG"
   echo "ld-config assembled + landed at $LD_CONFIG (timezone: $LD_TIMEZONE)." >&2
+else
+  # Preserve path: a gate-passing operator-edited config is kept verbatim, but
+  # re-assert mode 600 — it is PII-bearing and a prior run (or a manual edit)
+  # could have left a looser mode that verify would otherwise let pass.
+  chmod 600 "$LD_CONFIG"
 fi
 
 # The three operator inputs arrive EXPORTED in this script's environment. Clear
