@@ -203,9 +203,14 @@ if [ "$NEED_ASSEMBLE" = "1" ]; then
     || PLOW_TOKEN=$(grep -m1 -E '^PLOW_CHAT_TOKEN=' "$ENV_FILE" 2>/dev/null | sed 's/^PLOW_CHAT_TOKEN=//') || true
   [ -n "$PLOW_TOKEN" ] \
     || { echo "no PLOW_CONNECTOR_TOKEN/PLOW_CHAT_TOKEN in $ENV_FILE. $LINK_HINT" >&2; exit 1; }
+  # Capture stderr to a tempfile so a real failure (expired token, wrong
+  # PLOW_CHAT_BASE_URL, network) surfaces the connector's own error verbatim —
+  # NOT the misleading "unlinked" hint. The connector never prints the token.
+  STATUS_ERR=$(mktemp)
   GMAIL_STATUS=$(PLOW_CONNECTOR_TOKEN="$PLOW_TOKEN" PLOW_CHAT_BASE_URL="$PLOW_CHAT_BASE_URL" \
-    python3 "$CONNECTOR" gmail status 2>/dev/null) \
-    || { echo "Plow Gmail connector status call failed. $LINK_HINT" >&2; exit 1; }
+    python3 "$CONNECTOR" gmail status 2>"$STATUS_ERR") \
+    || { echo "Plow Gmail connector status call failed:" >&2; cat "$STATUS_ERR" >&2; rm -f "$STATUS_ERR"; exit 1; }
+  rm -f "$STATUS_ERR"
   unset PLOW_TOKEN
   # Parse the connected default account; exit non-zero unless connected with a
   # non-blank .account (jq prints nothing → the [ -n ] guard fails loud).
