@@ -117,7 +117,7 @@ A deterministic bash implementation of checks 1–4 lives at [`ref/verify.sh`](r
 
 ## Open Items
 
-- **Hermes compose service name + `hermes cron run` argument form.** The seed-hermes scaffold owns `compose.yaml`; its service name is not fixed by this SEED, so the installer takes it from `HERMES_SERVICE` (default `hermes-agent`). Confirm both the live service name and whether `hermes cron run` / `hermes cron list` key off the job *name* or a generated *id* against the live scaffold's `hermes cron list` output before relying on the cron leg; the file-set + config + `.env` path is testable independently with `SKIP_CRON=1`.
+- **Hermes compose service name + `hermes cron list` field form — to be confirmed against a live scaffold.** The seed-hermes scaffold owns `compose.yaml`; its service name is not fixed by this SEED, so the installer takes it from `HERMES_SERVICE` (default `hermes-agent`). The installer's idempotency dedups on a word-exact match of each job name against `hermes cron list`, failing loud if that list call errors; the live service name and the exact `hermes cron list` field layout are to be confirmed against a live scaffold's output. The file-set + config + `.env` path is testable independently with `SKIP_CRON=1`.
 - **Bundled vs registry-pulled.** The skills' source lives in this repo; v1 ships them by copying into the scaffold's `data/skills/`. A signed-skill registry would replace the copy step eventually (the source would still live here). v2 candidate.
 
 ## Non-Goals

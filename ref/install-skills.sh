@@ -272,12 +272,17 @@ command -v docker >/dev/null \
 COMPOSE="$SCAFFOLD_DIR/compose.yaml"
 [ -f "$COMPOSE" ] || { echo "no compose.yaml at $COMPOSE — is the seed-hermes scaffold present?" >&2; exit 1; }
 
-# Snapshot existing jobs once so we register each missing one idempotently.
-EXISTING=$(docker compose -f "$COMPOSE" exec -T "$HERMES_SERVICE" hermes cron list 2>/dev/null || true)
+# Snapshot existing jobs once so we register each missing one idempotently. A
+# failed `hermes cron list` must abort — an empty snapshot would silently
+# re-register every job, duplicating crons. Each job name appears in its
+# listed prompt as a discrete token, so dedup on a WORD match (grep -w), never
+# a substring: a substring of a longer/stale job must not count as present.
+EXISTING=$(docker compose -f "$COMPOSE" exec -T "$HERMES_SERVICE" hermes cron list) \
+  || { echo "FAIL: 'hermes cron list' errored — refusing to register (would duplicate jobs)" >&2; exit 1; }
 printf '%s\n' "$CRON_JOBS" | while IFS='|' read -r name sched prompt; do
-  case "$EXISTING" in
-    *"$name"*) echo "  cron already present: $name" >&2; continue ;;
-  esac
+  if printf '%s\n' "$EXISTING" | grep -qwF "$name"; then
+    echo "  cron already present: $name" >&2; continue
+  fi
   docker compose -f "$COMPOSE" exec -T "$HERMES_SERVICE" \
     hermes cron create "$sched" --prompt "$prompt" \
     || { echo "FAIL: could not register cron $name" >&2; exit 1; }
