@@ -97,7 +97,7 @@ bash "$(dirname "${BASH_SOURCE[0]:-$0}")/ref/install-skills.sh" --scaffold ./her
 
 ### Producer crons are registered
 
-- All six producer skills run as **Hermes cron jobs** — one per producer — created by the installer. There is no `plow-scheduled-runner` and no Plow `cron action=add`: `hermes cron` is host-drivable, so the installer registers each job directly by execing into the running container (`docker compose exec -T <service> hermes cron create '<schedule>' --prompt "<prompt>"`). The schedule + prompt for each job are the values in each skill's `SKILL.md § Scheduling`:
+- All six producer skills run as **Hermes cron jobs** — one per producer — created by the installer. There is no `plow-scheduled-runner` and no Plow `cron action=add`: `hermes cron` is host-drivable, so the installer registers each job directly by execing into the running container (`docker compose exec -T <service> hermes cron create '<schedule>' "<prompt>" --name '<job-name>' </dev/null`). The exact job-name, schedule, and prompt for each job come from the installer's `CRON_JOBS` table (`ref/install-skills.sh`) — the single source; each skill's `SKILL.md § Scheduling` summarizes that skill's cadence:
   - **`ld-morning-updates`** — `0 7 * * *`, posts the morning affirmation as card 2.
   - **`ld-morning-triage`** — `5 7 * * *`, posts the morning priority alert as card 1.
   - **`ld-weather`** — `0 6 * * *`, posts the weather tile as card 3.
@@ -121,7 +121,6 @@ A deterministic bash implementation of checks 1–4 lives at [`ref/verify.sh`](r
 
 ## Open Items
 
-- **Hermes compose service name + `hermes cron list` field form — to be confirmed against a live scaffold.** The seed-hermes scaffold owns `compose.yaml`; its service name is not fixed by this SEED, so the installer takes it from `HERMES_SERVICE` (default `hermes-agent`). The installer's idempotency dedups on a word-exact match of each job name against `hermes cron list`, failing loud if that list call errors; the live service name and the exact `hermes cron list` field layout are to be confirmed against a live scaffold's output. The file-set + config + `.env` path is testable independently with `SKIP_CRON=1`.
 - **Bundled vs registry-pulled.** The skills' source lives in this repo; v1 ships them by copying into the scaffold's `data/skills/`. A signed-skill registry would replace the copy step eventually (the source would still live here). v2 candidate.
 
 ## Non-Goals
