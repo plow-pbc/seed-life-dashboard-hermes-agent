@@ -23,7 +23,7 @@
 
 set -euo pipefail
 
-SCAFFOLD_DIR="${HERMES_SCAFFOLD_DIR:-./hermes-agent}"
+SCAFFOLD_DIR="${HERMES_SCAFFOLD:-./hermes-agent}"
 # The compose service the producers run in. The seed-hermes scaffold owns
 # compose.yaml; its service name is not fixed by this SEED, so it is overridable.
 HERMES_SERVICE="${HERMES_SERVICE:-hermes}"
