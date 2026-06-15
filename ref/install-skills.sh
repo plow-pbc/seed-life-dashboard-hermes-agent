@@ -321,8 +321,9 @@ echo "  ld-config resolved at $LD_CONFIG" >&2
 #    container, one per producer, idempotently (check `hermes cron list`
 #    first). Requires the container up. SKIP_CRON=1 makes the file-set path
 #    testable without a running container (the umbrella runs the crons after
-#    `docker compose up`). One job per producer; the schedule + prompt are the
-#    per-skill SKILL.md § Scheduling values.
+#    `docker compose up`). One job per producer; the job-name, schedule, and
+#    prompt are the CRON_JOBS table values below — the single source; each
+#    skill's SKILL.md § Scheduling summarizes that skill's cadence.
 #
 # job-name|schedule|prompt
 CRON_JOBS='ld-morning-updates|0 7 * * *|Run the ld-morning-updates affirmation producer now: compose the morning affirmation and post it to the kiosk as card 2, type affirmation.
