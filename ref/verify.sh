@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-SCAFFOLD_DIR="${HERMES_SCAFFOLD_DIR:-./hermes-agent}"
+SCAFFOLD_DIR="${HERMES_SCAFFOLD:-./hermes-agent}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --scaffold) SCAFFOLD_DIR="$2"; shift 2 ;;
