@@ -26,7 +26,7 @@ set -euo pipefail
 SCAFFOLD_DIR="${HERMES_SCAFFOLD_DIR:-./hermes-agent}"
 # The compose service the producers run in. The seed-hermes scaffold owns
 # compose.yaml; its service name is not fixed by this SEED, so it is overridable.
-HERMES_SERVICE="${HERMES_SERVICE:-hermes-agent}"
+HERMES_SERVICE="${HERMES_SERVICE:-hermes}"
 
 usage() {
   cat <<EOF
@@ -337,7 +337,7 @@ if [ "${SKIP_CRON:-0}" = "1" ]; then
   echo "SKIP_CRON=1 — skills + config + .env landed; crons NOT registered." >&2
   echo "Register them after the container is up (the umbrella does this):" >&2
   printf '%s\n' "$CRON_JOBS" | while IFS='|' read -r name sched prompt; do
-    echo "  docker compose -f $SCAFFOLD_DIR/compose.yaml exec -T $HERMES_SERVICE hermes cron create '$sched' --prompt \"$prompt\"" >&2
+    echo "  docker compose -f $SCAFFOLD_DIR/compose.yaml exec -T $HERMES_SERVICE hermes cron create '$sched' \"$prompt\" --name '$name' </dev/null" >&2
   done
   exit 0
 fi
@@ -352,14 +352,14 @@ COMPOSE="$SCAFFOLD_DIR/compose.yaml"
 # re-register every job, duplicating crons. Each job name appears in its
 # listed prompt as a discrete token, so dedup on a WORD match (grep -w), never
 # a substring: a substring of a longer/stale job must not count as present.
-EXISTING=$(docker compose -f "$COMPOSE" exec -T "$HERMES_SERVICE" hermes cron list) \
+EXISTING=$(docker compose -f "$COMPOSE" exec -T "$HERMES_SERVICE" hermes cron list </dev/null) \
   || { echo "FAIL: 'hermes cron list' errored — refusing to register (would duplicate jobs)" >&2; exit 1; }
 printf '%s\n' "$CRON_JOBS" | while IFS='|' read -r name sched prompt; do
   if printf '%s\n' "$EXISTING" | grep -qwF "$name"; then
     echo "  cron already present: $name" >&2; continue
   fi
   docker compose -f "$COMPOSE" exec -T "$HERMES_SERVICE" \
-    hermes cron create "$sched" --prompt "$prompt" \
+    hermes cron create "$sched" "$prompt" --name "$name" </dev/null \
     || { echo "FAIL: could not register cron $name" >&2; exit 1; }
   echo "  cron registered: $name ($sched)" >&2
 done
