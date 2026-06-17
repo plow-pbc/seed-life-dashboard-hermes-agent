@@ -19,12 +19,13 @@ Once per run:
 2. Fetch the NWS forecast (a pure HTTPS fetch — `api.weather.gov`, no key):
    resolve the gridpoint from `lat`/`lon`, then read the hourly + daily
    forecast. NWS reports °F for US points (Fahrenheit-only by contract).
-3. Compose the **self-contained** weather tile HTML — it ships its own
-   `<style>` (the `.weather-*` rules), so the viewer holds no weather CSS.
-   The current temp big, the condition, and the location + H/L beneath:
-
-       <div class="weather"><div class="weather-now"><span class="weather-temp">72°</span><span class="weather-cond">Sunny</span></div><div class="weather-meta"><span>Mountain View</span><span>H77 · L55</span></div></div>
-
+3. Compose the **self-contained** weather tile HTML. The canonical markup +
+   `<style>` (the `.weather-*` rules, which reference the viewer's shared theme
+   tokens) is defined in `ld-shared/references/kiosk-protocol.md`
+   § "Weather tile (card 3)" — the ONE source both agent seeds share. Read it
+   and reproduce that tile exactly, filling in the current temp (big), the
+   condition, and the location + H/L. It ships its own `<style>`, so the viewer
+   holds no weather CSS.
 4. Post it to the kiosk as card 3, `type: weather` (see Post).
 
 The kiosk renders the HTML verbatim (`dangerouslySetInnerHTML`). This makes a
