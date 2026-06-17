@@ -8,7 +8,11 @@ jobs:
 
 - `ld-shared` — the shared `post_to_kiosk.py` POST helper (reads the kiosk
   endpoint + bearer from the `DASHBOARD_*` env vars) plus the
-  `references/connectors.md` data-door convention all producers reuse.
+  `references/connectors.md` data-door convention all producers reuse. **This is
+  the shared contract layer**, pulled from
+  [`plow-pbc/life-dashboard-skills`](https://github.com/plow-pbc/life-dashboard-skills)
+  at install/test time (`ref/sync-ld-shared.sh`) and not vendored here — both
+  life-dashboard agent seeds pull the same copy.
 - `ld-calendar-nudge` — half-hourly meeting reminders to the kiosk; messages
   the owner over Plow Chat when a meeting with other attendees is imminent.
 - `ld-morning-triage` — daily morning priority alert (card 1), drawn from
@@ -18,10 +22,13 @@ jobs:
 - `ld-weather` — daily weather card (card 3) from the National Weather Service.
 - `ld-sports` — daily sports card (card 5) from ESPN's public scoreboard feed.
 
-This repo is the source-of-truth for the seven `ld-*` skills — they live at
-`ref/team-skills/` and are authored and fixed here. The install **copies** each
-skill into `<scaffold>/data/skills/ld-*` (the container sees them at
-`/opt/data/skills/ld-*`) and registers one `hermes cron` job per producer.
+This repo is the source-of-truth for the **six platform-specific** `ld-*`
+producer skills — they live at `ref/team-skills/` and are authored and fixed
+here. The seventh, `ld-shared`, is the shared contract layer pulled from
+[`plow-pbc/life-dashboard-skills`](https://github.com/plow-pbc/life-dashboard-skills)
+(see above). The install **copies** each skill into `<scaffold>/data/skills/ld-*`
+(the container sees them at `/opt/data/skills/ld-*`) and registers one
+`hermes cron` job per producer.
 
 The producers read external data through the **plow-connectors** skill
 installed by [`seed-hermes-plow`](https://github.com/plow-pbc/seed-hermes-plow)

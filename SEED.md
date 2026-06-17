@@ -15,9 +15,10 @@ API / per-machine state:
 
 Software:
 
+- `https://github.com/plow-pbc/life-dashboard-skills` — the shared **ld-shared contract layer**: the `post_to_kiosk.py` helper every producer wrapper calls, the kiosk wire/tile protocol (`references/kiosk-protocol.md`), and the canonical `ld-config` template. This SEED does NOT vendor `ld-shared`; [`ref/sync-ld-shared.sh`](ref/sync-ld-shared.sh) clones this repo (`git`, default branch `main`; `LD_SKILLS_REF`/`LD_SKILLS_REPO` override for dev/CI) and materializes `ref/team-skills/ld-shared/` at install + test time. The Plow agent seed (`seed-life-dashboard-agent`) pulls the SAME copy, so a producer-POST or protocol fix lands once instead of being hand-applied to two repos.
 - `https://github.com/plow-pbc/seed-hermes-plow` — provides the Docker Hermes scaffold, the `plow_chat` gateway (its activation lands `PLOW_CHAT_*` into the scaffold's `data/.env`), and the `plow-connectors` skill the producers read external data through (replaces `seed-plow-app`).
 - `https://github.com/plow-pbc/seed-life-dashboard-viewer` — an HTML-capable kiosk viewer is a REQUIRED runtime. `ld-weather` (card 3) and `ld-sports` (card 5) post **self-contained HTML tiles** (each ships its own `<style>`) that the viewer renders verbatim; the viewer holds no widget CSS, so these skills depend only on the generic box-renderer (PR #40) and its shared theme tokens the producer styles reference. (The optional producer `title` field the alert/affirmation skills use to hide their eyebrows is viewer PR #43.) Installed against an older viewer that does not render card HTML, those two cards display literal markup tags — install/upgrade the viewer before this SEED.
-- System tools: `curl`, `tar`, `jq`, `python3`, `docker` (the installer execs `hermes cron` inside the container via `docker compose exec`). No install needed.
+- System tools: `curl`, `tar`, `jq`, `python3`, `git` (`git` pulls the shared `ld-shared` layer), `docker` (the installer execs `hermes cron` inside the container via `docker compose exec`). No install needed.
 
 ### Requirements
 
@@ -44,8 +45,8 @@ bash "$(dirname "${BASH_SOURCE[0]:-$0}")/ref/install-skills.sh" --scaffold ./her
 
 ### `ld-*` skills
 
-- This repo is the **source-of-truth** for the seven `ld-*` producer skills — they live under `ref/team-skills/ld-*/` and are authored and fixed here. There is no upstream the copies track; a fix to producer behavior lands in this repo.
-- The seven skill directories `ld-{calendar-nudge,morning-triage,morning-updates,shared,weekly-digest,weather,sports}/` are installed by **copy** into `<scaffold>/data/skills/ld-*`; the container sees them at `/opt/data/skills/ld-*`. `ld-shared` is the shared `post_to_kiosk.py` POST helper (plus the `connectors.md` data-door convention); the other six are full producer skills with a `SKILL.md`.
+- This repo is the **source-of-truth** for the SIX platform-specific `ld-*` producer skills — `ld-{calendar-nudge,morning-triage,morning-updates,weekly-digest,weather,sports}/` under `ref/team-skills/`. These carry the Hermes-specific behavior (LLM cron producers, Gmail+Slack triage via the `plow-connectors` door, `data/.env`-env secrets + `/tmp` handoff POST path) and are authored and fixed here. The seventh, **`ld-shared`**, is NOT authored here: it is the shared contract layer (the `post_to_kiosk.py` POST helper, the kiosk wire/tile protocol, the `ld-config` template, the `connectors.md` data-door convention) pulled from [`plow-pbc/life-dashboard-skills`](https://github.com/plow-pbc/life-dashboard-skills) by [`ref/sync-ld-shared.sh`](ref/sync-ld-shared.sh) at install + test time (and gitignored locally), so a `post_to_kiosk`/protocol fix lands once across both agent seeds. A producer wrapper imports `post_to_kiosk` from the sibling `ld-shared/scripts/`, so the pulled copy resolves unchanged.
+- The seven skill directories `ld-{calendar-nudge,morning-triage,morning-updates,shared,weekly-digest,weather,sports}/` (six from this repo + the pulled `ld-shared`) are installed by **copy** into `<scaffold>/data/skills/ld-*`; the container sees them at `/opt/data/skills/ld-*`. The six are full producer skills with a `SKILL.md`.
 
 ### Dashboard secrets
 

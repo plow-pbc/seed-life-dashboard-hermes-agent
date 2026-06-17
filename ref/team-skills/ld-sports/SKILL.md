@@ -20,9 +20,13 @@ Once per run:
    out contributes no row, and when *no* followed team has a game in that
    window the tile reads **"No upcoming games"**. A single team's feed hiccup
    is logged and skipped (one bad team never blanks the whole tile).
-3. Compose the **self-contained** scoreboard tile HTML — it ships its own
-   `<style>` (the `.sp-*` rules), so the viewer holds no sports CSS and the
-   producer owns the look.
+3. Compose the **self-contained** scoreboard tile HTML. The canonical `<style>`
+   (the `.sp-*` rules, which reference the viewer's shared theme tokens) and the
+   game-row markup/grid contract are defined in
+   `ld-shared/references/kiosk-protocol.md` § "Sports tile (card 5)" — the ONE
+   source both agent seeds share. Read it and reproduce that tile exactly,
+   one `.sp-game` row per shown game (up to 3). It ships its own `<style>`, so
+   the viewer holds no sports CSS.
 4. Post it to the kiosk as card 5, `type: sports` (see Post).
 
 The kiosk renders the HTML verbatim (`dangerouslySetInnerHTML`). This makes a

@@ -58,7 +58,8 @@ done
 DATA_DIR="${SCAFFOLD_DIR%/}/data"
 
 # 1. Required tools. No lsof/pgrep — there is no plowd port to discover.
-for tool in jq python3; do
+#    `git` pulls the shared ld-shared contract layer.
+for tool in jq python3 git; do
   command -v "$tool" >/dev/null \
     || { echo "missing required tool: $tool" >&2; exit 1; }
 done
@@ -66,6 +67,14 @@ done
 SEED_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 SKILLS_SRC="$SEED_ROOT/ref/team-skills"
 [ -d "$SKILLS_SRC" ] || { echo "no $SKILLS_SRC — incomplete checkout?" >&2; exit 1; }
+
+# 1b. Pull the shared ld-shared contract layer (post_to_kiosk helper + the
+#     kiosk wire/tile protocol + the ld-config template) from
+#     plow-pbc/life-dashboard-skills. It is NOT vendored in this seed — both
+#     life-dashboard agent seeds pull the same canonical copy, so a producer-
+#     POST or protocol fix lands once. ld-shared MUST be present before the
+#     skill copy below.
+bash "$SEED_ROOT/ref/sync-ld-shared.sh"
 
 # 2. Validate the two umbrella/operator-supplied endpoint inputs UPFRONT so a
 #    malformed value aborts before anything is written. DASHBOARD_ENDPOINT_URL

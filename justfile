@@ -1,19 +1,26 @@
 # Test runner for seed-life-dashboard-hermes-agent.
 #
-# This SEED owns source code (the ld-* producer skills) which carries the
-# committed Python helper test. The `test` recipe runs:
-#   - bash -n on the install + verify scripts
-#   - py_compile on every ld-* Python file
-#   - the ld-shared Python helper tests (post_to_kiosk shared module)
-#
-# The producers are LLM/connector-driven on Hermes — there is no Node
-# scheduled-runner here (Hermes cron replaces it), so no JS tests.
+# This SEED owns six platform-specific ld-* producer skills (Python wrappers,
+# LLM/connector-driven — Hermes cron replaces the Node scheduled-runner, so no
+# JS tests). The shared ld-shared contract layer (post_to_kiosk + the wire/tile
+# protocol + the ld-config template) lives in plow-pbc/life-dashboard-skills and
+# is pulled here by ref/sync-ld-shared.sh, not vendored — so `test` syncs first.
+# The recipe runs:
+#   - bash -n on the install + verify + sync scripts
+#   - py_compile on every ld-* Python file (wrappers + synced helper)
+#   - the shared post_to_kiosk helper tests (from the synced ld-shared)
+#   - this seed's wrapper-contract test (each producer wrapper → right card)
 
 test:
     # bash-parse checks first — fail fast on syntax errors.
     bash -n ref/install-skills.sh
     bash -n ref/verify.sh
-    # py_compile every ld-* Python file (wrappers + shared helper).
+    bash -n ref/sync-ld-shared.sh
+    # Pull the shared contract layer (override the ref/source via
+    # LD_SKILLS_REF / LD_SKILLS_REPO for dev/CI against an unmerged branch).
+    bash ref/sync-ld-shared.sh
+    # py_compile every ld-* Python file (wrappers + synced helper).
     python3 -m py_compile $(find ref/team-skills -name '*.py')
-    # The shared-helper test — the actual executable value this repo carries.
+    # Shared helper tests (both transports) + this seed's wrapper contracts.
     python3 ref/team-skills/ld-shared/scripts/test_post_to_kiosk.py
+    python3 ref/team-skills/test_wrappers.py
