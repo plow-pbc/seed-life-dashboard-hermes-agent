@@ -288,7 +288,9 @@ config = {
         {"abbr": "gsw", "sport": "basketball", "league": "nba"},
     ]},
 }
-json.dump(config, sys.stdout, indent=2)
+# ensure_ascii=False to emit raw UTF-8 like the old `jq -n` did, so a non-ASCII
+# owner name (e.g. José) lands as-is rather than \u-escaped.
+json.dump(config, sys.stdout, indent=2, ensure_ascii=False)
 sys.stdout.write("\n")
 PY
   chmod 600 "$TMP"
