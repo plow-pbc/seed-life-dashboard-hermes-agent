@@ -229,12 +229,14 @@ PY
   unset PLOW_TOKEN
   # Parse the connected default account; exit non-zero unless connected with a
   # non-blank .account (python prints nothing → the [ -n ] guard fails loud).
-  # The status JSON flows in via env (GMAIL_STATUS), never argv. Any parse
-  # error / wrong shape prints nothing, so the guard below fails loud.
-  LD_CALENDAR_ACCOUNT=$(GMAIL_STATUS="$GMAIL_STATUS" python3 - <<'PY'
-import json, os, re
+  # The status JSON (PII-bearing) flows in via STDIN, never argv and never a
+  # child-process env var — so it isn't exposed to same-UID processes during the
+  # parse window. Any parse error / wrong shape prints nothing, so the guard
+  # below fails loud.
+  LD_CALENDAR_ACCOUNT=$(printf '%s' "$GMAIL_STATUS" | python3 - <<'PY'
+import json, re, sys
 try:
-    s = json.loads(os.environ.get("GMAIL_STATUS", ""))
+    s = json.loads(sys.stdin.read())
     acct = s.get("account") if isinstance(s, dict) else None
     if isinstance(s, dict) and s.get("connected") is True \
             and isinstance(acct, str) and re.search(r"\S", acct):

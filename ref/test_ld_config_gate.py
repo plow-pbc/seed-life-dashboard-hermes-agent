@@ -114,6 +114,11 @@ def run_gate(runner, raw):
         path = f.name
     try:
         proc = subprocess.run(runner + [path], capture_output=True, text=True)
+        # The python gate returns 0 for every config verdict (valid / failures /
+        # "not valid JSON"); a non-zero exit is a crash or usage bug, never a
+        # verdict. Surface it so it can't masquerade as an empty-stdout PASS.
+        if proc.returncode != 0:
+            return f"<gate exited nonzero: {proc.returncode}>"
         # both gates print exactly one trailing newline; normalize for compare.
         return proc.stdout.rstrip("\n")
     finally:
