@@ -231,9 +231,11 @@ PY
   # non-blank .account (python prints nothing → the [ -n ] guard fails loud).
   # The status JSON (PII-bearing) flows in via STDIN, never argv and never a
   # child-process env var — so it isn't exposed to same-UID processes during the
-  # parse window. Any parse error / wrong shape prints nothing, so the guard
-  # below fails loud.
-  LD_CALENDAR_ACCOUNT=$(printf '%s' "$GMAIL_STATUS" | python3 - <<'PY'
+  # parse window. The parser program is passed via `python3 -c` (NOT `python3 -`
+  # + heredoc, which would make the interpreter read the heredoc as the program
+  # and leave sys.stdin already at EOF). Any parse error / wrong shape prints
+  # nothing, so the guard below fails loud.
+  LD_CALENDAR_ACCOUNT=$(printf '%s' "$GMAIL_STATUS" | python3 -c '
 import json, re, sys
 try:
     s = json.loads(sys.stdin.read())
@@ -243,8 +245,7 @@ try:
         print(acct)
 except (ValueError, TypeError):
     pass
-PY
-  ) || true
+') || true
   [ -n "$LD_CALENDAR_ACCOUNT" ] \
     || { echo "Plow Gmail connector reports no connected account. $LINK_HINT" >&2; exit 1; }
   unset GMAIL_STATUS
