@@ -58,8 +58,10 @@ done
 DATA_DIR="${SCAFFOLD_DIR%/}/data"
 
 # 1. Required tools. No lsof/pgrep — there is no plowd port to discover.
-#    `git` pulls the shared ld-shared contract layer.
-for tool in jq python3 git; do
+#    `git` pulls the shared ld-shared contract layer. No jq: this runs ON THE PI
+#    where jq is deliberately not provisioned (the umbrella SEED keeps jq off the
+#    Pi); all JSON is parsed/assembled with python3, which Debian guarantees.
+for tool in python3 git; do
   command -v "$tool" >/dev/null \
     || { echo "missing required tool: $tool" >&2; exit 1; }
 done
@@ -164,20 +166,13 @@ LD_CONFIG_DIR="${DATA_DIR%/}/ld"
 LD_CONFIG="$LD_CONFIG_DIR/config.json"
 mkdir -p "$LD_CONFIG_DIR"
 
-# The minimal structural gate, inline. Prints the failing invariant(s) (never
-# the PII values) to stdout; empty output == PASS. Same checks ref/verify.sh's
-# v-ld-config enforces, so install + verify never drift.
+# The minimal structural gate. Prints the failing invariant(s) (never the PII
+# values) to stdout; empty output == PASS. The checks live in ONE shared python3
+# implementation (ref/ld_config_gate.py) that ref/verify.sh's v-ld-config calls
+# too, so install + verify CANNOT drift — and the Pi needs no jq.
+LD_CONFIG_GATE="$SEED_ROOT/ref/ld_config_gate.py"
 ld_config_gate() {  # ld_config_gate FILE -> prints failures (empty == pass)
-  jq -r '
-    [ if ((.family.owner.name     // "") | test("\\S")) then empty else "family.owner.name is blank" end,
-      if ((.calendar.sources | type) == "array" and (.calendar.sources | length) >= 1)
-        then empty else "calendar.sources is not a non-empty array" end,
-      if ([.calendar.sources[]? | select(((.account // "") | test("\\S")) | not)] | length) == 0
-        then empty else "a calendar.sources[].account is blank" end,
-      if ([.. | strings | select(test("^\\[[A-Z][A-Z0-9_]*\\]$"))] | length) == 0
-        then empty else "an unfilled [UPPER_SNAKE] placeholder remains" end
-    ] | join("; ")
-  ' "$1" 2>/dev/null || echo "not valid JSON"
+  python3 "$LD_CONFIG_GATE" "$1"
 }
 
 NEED_ASSEMBLE=0
@@ -191,7 +186,7 @@ if [ "$NEED_ASSEMBLE" = "1" ]; then
   # LD_OWNER_NAME is the sole operator input REQUIRED to assemble — a missing
   # one fails loud rather than landing a partial config.
   case "${LD_OWNER_NAME:-}" in
-    *[![:space:]]*) ;;  # contains a non-whitespace char (matches the jq gate's \S)
+    *[![:space:]]*) ;;  # contains a non-whitespace char (matches the gate's \S)
     *) echo "LD_OWNER_NAME is unset or blank — the installer must collect the owner's display name before assembling ld-config" >&2; exit 1 ;;
   esac
 
@@ -233,16 +228,28 @@ PY
   rm -f "$STATUS_ERR"
   unset PLOW_TOKEN
   # Parse the connected default account; exit non-zero unless connected with a
-  # non-blank .account (jq prints nothing → the [ -n ] guard fails loud).
-  LD_CALENDAR_ACCOUNT=$(printf '%s' "$GMAIL_STATUS" \
-    | jq -r 'if (.connected == true) and ((.account // "") | test("\\S")) then .account else empty end' 2>/dev/null) || true
+  # non-blank .account (python prints nothing → the [ -n ] guard fails loud).
+  # The status JSON flows in via env (GMAIL_STATUS), never argv. Any parse
+  # error / wrong shape prints nothing, so the guard below fails loud.
+  LD_CALENDAR_ACCOUNT=$(GMAIL_STATUS="$GMAIL_STATUS" python3 - <<'PY'
+import json, os, re
+try:
+    s = json.loads(os.environ.get("GMAIL_STATUS", ""))
+    acct = s.get("account") if isinstance(s, dict) else None
+    if isinstance(s, dict) and s.get("connected") is True \
+            and isinstance(acct, str) and re.search(r"\S", acct):
+        print(acct)
+except (ValueError, TypeError):
+    pass
+PY
+  ) || true
   [ -n "$LD_CALENDAR_ACCOUNT" ] \
     || { echo "Plow Gmail connector reports no connected account. $LINK_HINT" >&2; exit 1; }
   unset GMAIL_STATUS
 
   # Timezone: honor a pre-exported LD_TIMEZONE; otherwise autodetect from
   # readlink /etc/localtime, falling back to America/Los_Angeles. Non-PII, so
-  # it is the ONLY value passed to jq via --arg.
+  # it is the ONLY value passed to the assembler via argv.
   if [ -z "${LD_TIMEZONE:-}" ]; then
     TZLINK=$(readlink /etc/localtime 2>/dev/null || true)
     case "$TZLINK" in
@@ -255,28 +262,35 @@ PY
     exit 1
   fi
 
-  # Assemble. The PII values (owner name, derived calendar account) reach jq
-  # ONLY through the environment, read inside the filter via the `env` builtin
-  # — NEVER on argv. Only the non-PII timezone is passed via --arg.
+  # Assemble. The PII values (owner name, derived calendar account) reach the
+  # python assembler ONLY through the environment, read via os.environ — NEVER
+  # on argv (so they never appear in `ps`/process listings) and never via a
+  # temp file in the SEED tree. Only the non-PII timezone is passed via argv.
   TMP=$(mktemp "$LD_CONFIG_DIR/.config.json.XXXXXX")
   LD_OWNER_NAME="$LD_OWNER_NAME" \
   LD_CALENDAR_ACCOUNT="$LD_CALENDAR_ACCOUNT" \
-  jq -n --arg tz "$LD_TIMEZONE" '
-    {
-      family: { owner: { name: env.LD_OWNER_NAME }, timezone: $tz },
-      calendar: { sources: [ { account: env.LD_CALENDAR_ACCOUNT, calendar_id: "primary", name: "Personal" } ] },
-      morning_updates: { review_window_hours: 24 },
-      weekly_digest: { length: "", long_lead: [] },
-      morning_triage: { ranking_instructions: "", exclude: { slack_handles: [], email_addresses: [] } },
-      calendar_nudge: { lookahead_virtual_minutes: 30, lookahead_in_person_minutes: 60 },
-      weather: { location: "Mountain View", lat: 37.386, lon: -122.083 },
-      sports: { followed: [
-        { abbr: "sf", sport: "baseball", league: "mlb" },
-        { abbr: "lad", sport: "baseball", league: "mlb" },
-        { abbr: "gsw", sport: "basketball", league: "nba" }
-      ] }
-    }
-  ' > "$TMP"
+  python3 - "$LD_TIMEZONE" > "$TMP" <<'PY'
+import json, os, sys
+tz = sys.argv[1]  # non-PII timezone is the only argv value
+config = {
+    "family": {"owner": {"name": os.environ["LD_OWNER_NAME"]}, "timezone": tz},
+    "calendar": {"sources": [
+        {"account": os.environ["LD_CALENDAR_ACCOUNT"], "calendar_id": "primary", "name": "Personal"}
+    ]},
+    "morning_updates": {"review_window_hours": 24},
+    "weekly_digest": {"length": "", "long_lead": []},
+    "morning_triage": {"ranking_instructions": "", "exclude": {"slack_handles": [], "email_addresses": []}},
+    "calendar_nudge": {"lookahead_virtual_minutes": 30, "lookahead_in_person_minutes": 60},
+    "weather": {"location": "Mountain View", "lat": 37.386, "lon": -122.083},
+    "sports": {"followed": [
+        {"abbr": "sf", "sport": "baseball", "league": "mlb"},
+        {"abbr": "lad", "sport": "baseball", "league": "mlb"},
+        {"abbr": "gsw", "sport": "basketball", "league": "nba"},
+    ]},
+}
+json.dump(config, sys.stdout, indent=2)
+sys.stdout.write("\n")
+PY
   chmod 600 "$TMP"
   FAILS=$(ld_config_gate "$TMP")
   if [ -n "$FAILS" ]; then
@@ -314,7 +328,16 @@ fi
 # household timezone. `hermes cron` has no per-job tz flag, so schedules fire in
 # the container's TZ; this makes that TZ the household's. Read from the
 # now-confirmed landed config (the gate above guarantees it parses).
-TZ_VALUE=$(jq -r '.family.timezone // ""' "$LD_CONFIG")
+TZ_VALUE=$(LD_CONFIG="$LD_CONFIG" python3 - <<'PY'
+import json, os
+with open(os.environ["LD_CONFIG"], encoding="utf-8") as f:
+    cfg = json.load(f)
+fam = cfg.get("family")
+tz = fam.get("timezone") if isinstance(fam, dict) else None
+# Match jq `.family.timezone // ""`: null/false (or missing) -> "".
+print("" if tz is None or tz is False else tz)
+PY
+)
 if [ -n "$TZ_VALUE" ]; then
   TZ="$TZ_VALUE" env_set TZ
   unset TZ_VALUE
