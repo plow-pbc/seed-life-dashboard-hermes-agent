@@ -4,6 +4,11 @@
 
 set -euo pipefail
 
+# Locate the shared ld-config gate next to this script. install + verify call
+# the SAME python3 gate so they can never drift (and the Pi needs no jq).
+SEED_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
+LD_CONFIG_GATE="$SEED_ROOT/ref/ld_config_gate.py"
+
 SCAFFOLD_DIR="${HERMES_SCAFFOLD:-./hermes-agent}"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -47,25 +52,20 @@ esac
 echo "OK   v-token-shape"
 unset _ep _tok
 
-# ── v-ld-config: present, parses, passes the minimal structural gate. SAME gate
-#    install-skills.sh enforces, so install + verify never drift. PII never
-#    prints — only the failing invariant's name.
+# ── v-ld-config: present, parses, passes the minimal structural gate. The gate
+#    is the SHARED python3 ref/ld_config_gate.py install-skills.sh runs, so
+#    install + verify never drift (and the Pi needs no jq). The gate prints
+#    "not valid JSON" on a parse failure and the failing invariant's name(s)
+#    otherwise; PII never prints.
 [ -f "$LD_CONFIG" ] || { echo "FAIL v-ld-config: $LD_CONFIG missing" >&2; exit 1; }
-jq -e . "$LD_CONFIG" >/dev/null || { echo "FAIL v-ld-config: $LD_CONFIG is not valid JSON" >&2; exit 1; }
 # mode 600 where stat supports it (GNU `-c`, BSD `-f`) — config is PII-bearing.
 if _cmode=$(stat -c '%a' "$LD_CONFIG" 2>/dev/null || stat -f '%Lp' "$LD_CONFIG" 2>/dev/null); then
   [ "$_cmode" = "600" ] || { echo "FAIL v-ld-config: $LD_CONFIG not mode 600 (is $_cmode)" >&2; exit 1; }
 fi
-GATE=$(jq -r '
-  [ if ((.family.owner.name    // "") | test("\\S")) then empty else "family.owner.name is blank" end,
-    if ((.calendar.sources | type) == "array" and (.calendar.sources | length) >= 1)
-      then empty else "calendar.sources is not a non-empty array" end,
-    if ([.calendar.sources[]? | select(((.account // "") | test("\\S")) | not)] | length) == 0
-      then empty else "a calendar.sources[].account is blank" end,
-    if ([.. | strings | select(test("^\\[[A-Z][A-Z0-9_]*\\]$"))] | length) == 0
-      then empty else "an unfilled [UPPER_SNAKE] placeholder remains" end
-  ] | join("; ")
-' "$LD_CONFIG")
+GATE=$(python3 "$LD_CONFIG_GATE" "$LD_CONFIG")
+if [ "$GATE" = "not valid JSON" ]; then
+  echo "FAIL v-ld-config: $LD_CONFIG is not valid JSON" >&2; exit 1
+fi
 if [ -n "$GATE" ]; then
   echo "FAIL v-ld-config: $LD_CONFIG does not pass the install gate: $GATE" >&2
   echo "Fix the config (or re-run install with LD_OWNER_NAME set + Google linked in Plow — the calendar account is derived from the Plow Gmail connector) before verifying." >&2
