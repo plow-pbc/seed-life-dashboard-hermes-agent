@@ -91,12 +91,37 @@ for p in "${probes[@]}"; do
 done
 echo "OK   v-skills ($SKILLS_DIR)"
 
+# ── v-exec: every installed producer wrapper must carry the executable bit so
+#    the documented "run the helper by absolute path" invocation works. install
+#    copies skills with `cp -R` (mode-preserving), so a wrapper committed 100644
+#    lands non-executable on the Pi and the direct exec below (and the real
+#    producers) would hit `Permission denied` (exit 126). Assert +x on all of
+#    them — this is the contract the executable-bit fix guarantees.
+#    (ld-shared's post_to_kiosk.py is the imported helper module, not a
+#    path-invoked producer, so it is excluded — it ships 100644 by design.)
+shopt -s nullglob
+declare -a wrappers=()
+for w in "$SKILLS_DIR"/ld-*/scripts/post_*.py; do
+  case "$w" in */ld-shared/*) continue ;; esac
+  wrappers+=("$w")
+done
+shopt -u nullglob
+[ "${#wrappers[@]}" -ge 1 ] \
+  || { echo "FAIL v-exec: no producer wrappers found under $SKILLS_DIR" >&2; exit 1; }
+for w in "${wrappers[@]}"; do
+  [ -x "$w" ] || { echo "FAIL v-exec: $w is not executable (needs mode +x)" >&2; exit 1; }
+done
+echo "OK   v-exec (${#wrappers[@]} wrappers +x)"
+
 # ── v-dry-run: invoke one installed wrapper with --dry-run + the DASHBOARD_*
 #    env vars set, assert the redacted-body line. Proves the env resolves and
 #    the wrapper executes; it does NOT post over the network. We run the
 #    INSTALLED copy under data/skills/ so a broken install fails verify. The
-#    endpoint/token here are dummy values used only to satisfy the wrapper's
-#    read — the real values stay in data/.env, never read or printed here.
+#    executable-bit contract is asserted independently by v-exec above, so this
+#    check rebinds the wrapper's handoff to an isolated mktemp input rather than
+#    its hardcoded shared /tmp path (avoids clobbering a real producer's handoff
+#    or failing on a foreign-owned pre-existing file). The endpoint/token here
+#    are dummy values used only to satisfy the wrapper's read.
 WRAPPER="$SKILLS_DIR/ld-morning-updates/scripts/post_message.py"
 [ -f "$WRAPPER" ] || { echo "FAIL v-dry-run: $WRAPPER missing" >&2; exit 1; }
 DRY_INPUT=$(mktemp)
