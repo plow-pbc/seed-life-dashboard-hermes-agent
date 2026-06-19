@@ -94,7 +94,7 @@ bash "$(dirname "${BASH_SOURCE[0]:-$0}")/ref/install-skills.sh" --scaffold ./her
   - `family.owner.name` is present and **non-blank**.
   - `calendar.sources` is a **non-empty array**, and each source's `account` is **non-blank** (the derived Gmail account).
   - **No string value is left as a bare `[UPPER_SNAKE]` placeholder** (whole-string anchored).
-- The gate lives in the shared [`ref/ld_config_gate.py`](ref/ld_config_gate.py) (`python3`, no `jq`), called by BOTH [`ref/verify.sh`](ref/verify.sh) (the `v-ld-config` check) and the install action — one implementation, so install and verify can never drift. It does NOT re-check the autodetected timezone, and does NOT duplicate each producer's per-field runtime requirements.
+- The gate lives in the shared `plow-pbc/life-dashboard-skills` repo (`scripts/ld_config_gate.py`, `python3`, no `jq`), materialized here by the ld-shared sync at `ref/team-skills/ld-shared/scripts/ld_config_gate.py` and called by BOTH [`ref/verify.sh`](ref/verify.sh) (the `v-ld-config` check) and the install action — one implementation, single-homed upstream so install, verify, and the other life-dashboard seed can never drift. It does NOT re-check the autodetected timezone, and does NOT duplicate each producer's per-field runtime requirements.
 
 ### Producer crons are registered
 
