@@ -168,9 +168,13 @@ mkdir -p "$LD_CONFIG_DIR"
 
 # The minimal structural gate. Prints the failing invariant(s) (never the PII
 # values) to stdout; empty output == PASS. The checks live in ONE shared python3
-# implementation (ref/ld_config_gate.py) that ref/verify.sh's v-ld-config calls
-# too, so install + verify CANNOT drift — and the Pi needs no jq.
-LD_CONFIG_GATE="$SEED_ROOT/ref/ld_config_gate.py"
+# implementation homed in plow-pbc/life-dashboard-skills (scripts/ld_config_gate.py)
+# that ref/verify.sh's v-ld-config calls too, so install + verify CANNOT drift —
+# and the Pi needs no jq. It is materialized by the ld-shared sync at step 1b
+# above (which runs BEFORE this point), so the file is present at invocation.
+LD_CONFIG_GATE="$SEED_ROOT/ref/team-skills/ld-shared/scripts/ld_config_gate.py"
+[ -f "$LD_CONFIG_GATE" ] \
+  || { echo "ld-config gate missing at $LD_CONFIG_GATE — ld-shared was not synced. Run ref/sync-ld-shared.sh (install-skills.sh does this at step 1b)." >&2; exit 1; }
 ld_config_gate() {  # ld_config_gate FILE -> prints failures (empty == pass)
   python3 "$LD_CONFIG_GATE" "$1"
 }

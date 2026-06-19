@@ -4,10 +4,16 @@
 
 set -euo pipefail
 
-# Locate the shared ld-config gate next to this script. install + verify call
-# the SAME python3 gate so they can never drift (and the Pi needs no jq).
+# The shared ld-config gate, materialized under ref/team-skills/ld-shared by the
+# ld-shared sync (homed in plow-pbc/life-dashboard-skills). install + verify call
+# the SAME python3 gate so they can never drift (and the Pi needs no jq). verify
+# runs AFTER install (which syncs ld-shared), so the file is present; if verify is
+# run standalone before any install, fail loud rather than a confusing
+# python file-not-found.
 SEED_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
-LD_CONFIG_GATE="$SEED_ROOT/ref/ld_config_gate.py"
+LD_CONFIG_GATE="$SEED_ROOT/ref/team-skills/ld-shared/scripts/ld_config_gate.py"
+[ -f "$LD_CONFIG_GATE" ] \
+  || { echo "FAIL: ld-config gate missing at $LD_CONFIG_GATE — ld-shared not synced. Run ref/install-skills.sh first (it syncs ld-shared)." >&2; exit 1; }
 
 SCAFFOLD_DIR="${HERMES_SCAFFOLD:-./hermes-agent}"
 while [ $# -gt 0 ]; do
@@ -53,8 +59,8 @@ echo "OK   v-token-shape"
 unset _ep _tok
 
 # ── v-ld-config: present, parses, passes the minimal structural gate. The gate
-#    is the SHARED python3 ref/ld_config_gate.py install-skills.sh runs, so
-#    install + verify never drift (and the Pi needs no jq). The gate prints
+#    is the SHARED python3 ld-shared/scripts/ld_config_gate.py install-skills.sh
+#    runs, so install + verify never drift (and the Pi needs no jq). The gate prints
 #    "not valid JSON" on a parse failure and the failing invariant's name(s)
 #    otherwise; PII never prints.
 [ -f "$LD_CONFIG" ] || { echo "FAIL v-ld-config: $LD_CONFIG missing" >&2; exit 1; }
